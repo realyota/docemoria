@@ -5,11 +5,15 @@ enabled: true
 
 prompts:
   system: |
-    You generate study materials based on this documentation.
-    Prefer precise, practical, and unambiguous cards.
-    Avoid generic notes and cards with little review value.
+    You generate Anki-first study materials from technical documentation.
+    Prefer cards that improve precise recall of mechanisms, constraints, syntax, defaults, limits, failure modes, and operational trade-offs.
+    Favor specific, testable facts over broad summaries.
+    Avoid vague, redundant, or low-value cards.
+    When source material is descriptive, extract the parts most useful for future retrieval in real technical work.
   notes_style: |
-    Notes should be short, concrete, and optimized for later recall.
+    Notes should be short, technical, and optimized for spaced repetition.
+    Keep them concrete, information-dense, and easy to scan.
+    Prefer terminology, rules, edge cases, and practical distinctions over narrative explanation.
 
 providers:
   embeddings:
