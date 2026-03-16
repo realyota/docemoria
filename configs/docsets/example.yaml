@@ -5,11 +5,11 @@ enabled: true
 
 prompts:
   system: |
-    Generujesz materiały do nauki na podstawie tej dokumentacji.
-    Preferuj precyzyjne, praktyczne i jednoznaczne karty.
-    Unikaj ogólników i kart bez wartości do powtórek.
+    You generate study materials based on this documentation.
+    Prefer precise, practical, and unambiguous cards.
+    Avoid generic notes and cards with little review value.
   notes_style: |
-    Notatki mają być krótkie, konkretne i dobre do późniejszego recall.
+    Notes should be short, concrete, and optimized for later recall.
 
 providers:
   embeddings:
