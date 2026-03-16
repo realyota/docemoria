@@ -1,0 +1,41 @@
+source_id: example-docs
+label: Example Docs
+repo_path: docsets/example-docs
+enabled: true
+
+prompts:
+  system: |
+    Generujesz materiały do nauki na podstawie tej dokumentacji.
+    Preferuj precyzyjne, praktyczne i jednoznaczne karty.
+    Unikaj ogólników i kart bez wartości do powtórek.
+  notes_style: |
+    Notatki mają być krótkie, konkretne i dobre do późniejszego recall.
+
+providers:
+  embeddings:
+    provider: openai
+    model: text-embedding-3-large
+  generation:
+    provider: openai
+    model: gpt-5.4
+
+chunking:
+  strategy: markdown-sections
+  max_chars: 1800
+  overlap_chars: 200
+
+retrieval:
+  top_k: 8
+  rerank: true
+
+card_generation:
+  preferred_types:
+    - cloze
+    - qa
+    - concept
+  difficulty: medium
+  audience: intermediate
+
+export:
+  obsidian_path: outputs/obsidian/example-docs
+  anki_path: outputs/anki/example-docs
