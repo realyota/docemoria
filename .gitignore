@@ -1,3 +1,7 @@
 
 # Local OpenClaw runtime state
 .openclaw/
+
+# Python cache
+__pycache__/
+*.pyc
