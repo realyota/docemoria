@@ -33,14 +33,16 @@ Cel: wynik ma być realnie używalny.
 - eksport CSV / format pod Anki
 - output per docset / run
 
-## Milestone 4 — Retrieval quality
+## Milestone 4 — Retrieval quality + Q&A
 
-Cel: poprawić jakość wyboru materiału do kart.
+Cel: poprawić jakość wyboru materiału do kart i umożliwić sensowne odpowiadanie na pytania po dokumentacji.
 
 - embeddings
 - retrieval
 - reranking / heurystyki
 - lepszy dobór chunków pod typ kart
+- podstawowy flow LLM + RAG do odpowiedzi na pytania
+- wykorzystanie skompresowanej warstwy wiedzy obok surowych chunków
 
 ## Milestone 5 — Multi-docset system
 

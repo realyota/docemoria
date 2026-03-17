@@ -1,12 +1,14 @@
 # 📚 Docemoria
 
-Docemoria is a learning-first system for turning **local technical documentation** into **study materials**.
+Docemoria is a learning-first system for turning **local technical documentation** into **study materials** and a **compressed knowledge layer**.
 
 Instead of building yet another generic knowledge base, the goal is to create a practical pipeline that reads documentation from local repositories and produces:
 
 - 🧠 **Anki-style flashcards**
 - 🔁 **spaced-repetition notes**
 - 📝 **Obsidian-friendly learning outputs**
+- 💬 **LLM-assisted answers over documentation via RAG**
+- 🗜️ **compressed knowledge artifacts distilled from raw docs**
 
 ---
 
@@ -111,16 +113,17 @@ But the architecture should make it easy to swap providers and models later.
 
 ## 🧠 Why this is not “just RAG”
 
-Docemoria is not trying to be a general-purpose ask-anything-over-docs system.
+Docemoria should support question-answering over docs with LLM + RAG, but it is not only a general-purpose ask-anything-over-docs system.
 
-The focus is different:
+The focus is broader:
 
-- not just retrieving answers,
-- but identifying what is worth learning,
+- retrieving answers when the user asks questions,
+- identifying what is worth learning,
 - transforming it into reviewable knowledge,
+- building a compressed knowledge layer from the source material,
 - and supporting long-term retention.
 
-That means chunk selection, prompting, ranking, and export should all be optimized for **learning quality**, not just answer accuracy.
+That means chunk selection, prompting, ranking, summarization, and export should be optimized for **learning quality and knowledge compression**, not just answer accuracy.
 
 ---
 

@@ -25,12 +25,14 @@ Docemoria to ogólny system do zamiany lokalnych dokumentacji technicznych na ma
 
 ## Główna idea
 
-Zamiast budować kolejny ogólny RAG do wszystkiego, Docemoria ma budować pipeline pod naukę:
+Zamiast budować tylko kolejny ogólny RAG do wszystkiego, Docemoria ma budować pipeline pod naukę i skompresowaną wiedzę:
 1. ingest dokumentacji
 2. chunking i metadata
 3. retrieval / ranking
 4. generowanie materiałów edukacyjnych
-5. eksport do narzędzi używanych do nauki
+5. budowa skompresowanej warstwy wiedzy
+6. odpowiadanie na pytania przez LLM + RAG
+7. eksport do narzędzi używanych do nauki
 
 ## Ważne zasady
 
