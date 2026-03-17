@@ -5,3 +5,8 @@
 # Python cache
 __pycache__/
 *.pyc
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TOOLS.md
+USER.md
