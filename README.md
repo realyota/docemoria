@@ -227,13 +227,22 @@ If a choice makes the MVP dramatically harder without a strong immediate payoff,
 
 ## 🚧 Current status
 
-This repository is currently in the **project-definition / architecture-shaping** stage.
+This repository is currently in the **project-definition / architecture-shaping** stage, but now includes an initial implementation for **docset config loading**.
 
 The main focus right now is:
 
 - clarifying the architecture,
 - choosing practical implementation steps,
-- keeping the project general rather than overfitting to one documentation set.
+- keeping the project general rather than overfitting to one documentation set,
+- turning the planned docset configuration format into executable code.
+
+Current implemented slice:
+
+- Python package scaffold in `src/docemoria/`
+- YAML-backed docset config loader and validator
+- simple CLI to list docsets or inspect a single config
+- initial tests for config loading behavior
+- config format notes in `docs/docset-config.md`
 
 ---
 
