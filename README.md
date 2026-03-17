@@ -14,17 +14,27 @@ Instead of building yet another generic knowledge base, the goal is to create a 
 
 ## ✨ What problem it solves
 
-Technical documentation is full of useful knowledge, but it is usually optimized for **reference**, not **retention**.
+Technical documentation is full of useful knowledge, but it is usually optimized for **reference**, not **retention**, and not for **fast question-answering at the right level of abstraction**.
 
-Docemoria aims to bridge that gap:
+That creates several practical problems:
 
-1. read documentation from local checkouts,
-2. parse and chunk the content,
-3. index and rank useful knowledge fragments,
-4. generate study materials from them,
-5. export those materials into tools people actually use for learning.
+1. raw docs are hard to turn into durable memory,
+2. useful facts are buried inside long pages and repeated across sections,
+3. naive RAG often retrieves too much raw text and too little distilled understanding,
+4. teams and individuals lack a compact, reusable knowledge layer built from the docs they actually use,
+5. study workflows and operational question-answering are usually treated as separate systems even though they should reinforce each other.
 
-The project is meant to help convert raw docs into something you can **review, memorize, and revisit over time**.
+Docemoria aims to bridge that gap by:
+
+1. reading documentation from local checkouts,
+2. parsing and chunking the content,
+3. indexing and ranking useful knowledge fragments,
+4. compressing documentation into higher-value knowledge artifacts,
+5. generating study materials from that knowledge,
+6. answering questions over the documentation with LLM + RAG,
+7. exporting outputs into tools people actually use for learning and recall.
+
+The project is meant to convert raw docs into something you can **query, review, memorize, and revisit over time**.
 
 ---
 
@@ -35,6 +45,8 @@ Docemoria is designed around a few clear goals:
 - build a **working MVP quickly**
 - keep onboarding of new docsets **simple**
 - generate **high-quality learning materials**, not generic summaries
+- support **useful question-answering over docs** with LLM + RAG
+- build a **compressed knowledge base** from source documentation, not only a chunk index
 - avoid hard-locking the system to a single provider or a single documentation source
 - keep the architecture practical and easy to evolve
 
@@ -51,9 +63,22 @@ Read one or more local documentation repositories attached as `git submodules`.
 Extract readable content, split it into meaningful chunks, and preserve useful metadata.
 
 ### 3. 🗂️ Store and index
-Persist source metadata, documents, chunks, embeddings, and processing state in a simple storage layer.
+Persist source metadata, documents, chunks, embeddings, compressed knowledge artifacts, and processing state in a simple storage layer.
 
-### 4. 🎓 Generate learning material
+### 4. 🗜️ Build a compressed knowledge layer
+Distill raw documentation into higher-value units such as:
+
+- compact concept summaries
+- operational notes
+- mechanism explanations
+- constraints / limits / defaults
+- troubleshooting knowledge
+- terminology and relationship maps
+
+### 5. 💬 Answer questions with LLM + RAG
+Use both raw chunks and compressed knowledge artifacts to answer user questions more effectively than raw retrieval alone.
+
+### 6. 🎓 Generate learning material
 Create different types of educational outputs such as:
 
 - definition cards
@@ -63,7 +88,7 @@ Create different types of educational outputs such as:
 - troubleshooting-oriented learning notes
 - syntax and workflow reminders
 
-### 5. 📤 Export
+### 7. 📤 Export
 Write the results into formats that are immediately useful in real workflows, especially:
 
 - Obsidian markdown
@@ -87,9 +112,10 @@ Each docset should be able to define its own:
 - system prompt
 - generation style
 - retrieval behavior
+- compression behavior
 - content-specific heuristics
 
-Different documentation sets require different treatment. API docs, architecture docs, and troubleshooting docs should not all produce the same kind of learning material.
+Different documentation sets require different treatment. API docs, architecture docs, and troubleshooting docs should not all produce the same kind of learning material or compressed knowledge artifacts.
 
 ### Simple storage first
 - Primary storage: **DuckDB**
@@ -142,18 +168,20 @@ The rough MVP path is:
 - implement provider abstraction
 - add initial OpenAI-backed generation flow
 - support base prompt + per-docset prompt
-- generate first useful flashcards and review notes
+- generate first useful flashcards, review notes, and compressed knowledge artifacts
 
 ### Milestone 3 — Export MVP
 - export markdown for Obsidian
 - export Anki-friendly output
 - produce outputs per docset / per run
 
-### Milestone 4 — Retrieval quality
+### Milestone 4 — Retrieval quality + Q&A MVP
 - add embeddings
 - improve retrieval quality
 - apply reranking / heuristics
 - improve chunk selection for card generation
+- add a basic LLM + RAG question-answering flow
+- use compressed knowledge artifacts alongside raw chunks when useful
 
 ### Milestone 5 — Multi-docset support
 - support multiple docsets cleanly
@@ -213,6 +241,12 @@ The system should support a layered prompt model:
 - per-docset prompt
 - task-specific prompt
 
+A docset config should also be able to influence:
+
+- question-answering behavior
+- knowledge compression style
+- preferred educational outputs
+
 ---
 
 ## ✅ Design priorities
@@ -222,7 +256,8 @@ In order:
 1. **Simple, working MVP**
 2. **Easy configuration for new docsets**
 3. **Good learning-material quality**
-4. **Provider flexibility**
+4. **Useful compressed knowledge + Q&A behavior**
+5. **Provider flexibility**
 
 If a choice makes the MVP dramatically harder without a strong immediate payoff, it is probably the wrong choice.
 
@@ -257,6 +292,8 @@ Docemoria should eventually work well for things like:
 - turning ops / infra docs into review material
 - building repeatable study decks from evolving documentation
 - generating Obsidian learning notes from engineering sources
+- answering practical questions over documentation with better-than-naive RAG
+- building a compact knowledge layer for recurring operational and conceptual questions
 - supporting structured review of complex documentation over time
 
 ---
@@ -276,7 +313,7 @@ This project prefers:
 
 ## 📌 Summary
 
-Docemoria is a system for converting **local documentation repositories** into **high-quality study material**.
+Docemoria is a system for converting **local documentation repositories** into **high-quality study material**, **compressed knowledge artifacts**, and **better question-answering over docs**.
 
 It is built around:
 
@@ -285,6 +322,8 @@ It is built around:
 - 🧩 configurable per-docset behavior
 - 🔌 provider abstraction
 - 🧠 learning-first output generation
+- 🗜️ compressed knowledge construction
+- 💬 LLM + RAG question-answering
 - 📝 export to Obsidian / Anki-friendly formats
 
-If it works well, it should make technical documentation not only searchable, but actually **learnable**.
+If it works well, it should make technical documentation not only searchable, but actually **learnable, reusable, and easier to query**.
