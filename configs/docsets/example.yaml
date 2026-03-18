@@ -14,6 +14,15 @@ prompts:
     Notes should be short, technical, and optimized for spaced repetition.
     Keep them concrete, information-dense, and easy to scan.
     Prefer terminology, rules, edge cases, and practical distinctions over narrative explanation.
+  qa_style: |
+    Answer questions using the documentation as the ground truth.
+    Prefer concise, direct answers first, then supporting details and caveats.
+    Highlight defaults, constraints, version-sensitive behavior, and operational trade-offs when they matter.
+    If evidence is incomplete, say so instead of overclaiming.
+  compression_style: |
+    Compress documentation into reusable knowledge artifacts rather than generic summaries.
+    Prefer concept summaries, mechanism explanations, constraints, defaults, troubleshooting notes, and relationship maps.
+    Preserve details that improve later retrieval, study, or question-answering quality.
 
 providers:
   embeddings:

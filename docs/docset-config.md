@@ -47,6 +47,8 @@ See `configs/docsets/example.yaml`.
 - `enabled`: defaults to `true`
 - `prompts.system`
 - `prompts.notes_style`
+- `prompts.qa_style`: task-specific guidance for future documentation Q&A flows
+- `prompts.compression_style`: task-specific guidance for future compressed knowledge artifact generation
 - `providers.embeddings.provider`
 - `providers.embeddings.model`
 - `providers.generation.provider`
@@ -61,6 +63,17 @@ See `configs/docsets/example.yaml`.
 - `card_generation.audience`
 - `export.obsidian_path`
 - `export.anki_path`
+
+## Prompt structure
+
+The `prompts` section is intentionally split so a docset can steer different downstream tasks without requiring separate config files.
+
+- `system`: broad, docset-level behavior shared across generation tasks
+- `notes_style`: style guidance for learning notes and review-oriented outputs
+- `qa_style`: answer-shaping guidance for future LLM + RAG question-answering
+- `compression_style`: distillation guidance for future compressed knowledge artifacts
+
+All prompt fields are optional and default to empty strings, so existing configs remain valid.
 
 ## CLI
 

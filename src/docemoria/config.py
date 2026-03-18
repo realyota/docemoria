@@ -15,6 +15,8 @@ class ConfigError(ValueError):
 class PromptConfig:
     system: str = ""
     notes_style: str = ""
+    qa_style: str = ""
+    compression_style: str = ""
 
 
 @dataclass(slots=True)
@@ -136,6 +138,8 @@ def load_docset_config(path: Path) -> DocsetConfig:
         prompts=PromptConfig(
             system=str(prompts.get("system", "")).strip(),
             notes_style=str(prompts.get("notes_style", "")).strip(),
+            qa_style=str(prompts.get("qa_style", "")).strip(),
+            compression_style=str(prompts.get("compression_style", "")).strip(),
         ),
         providers=ProvidersConfig(
             embeddings=_parse_provider_model(

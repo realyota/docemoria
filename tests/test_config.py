@@ -11,6 +11,20 @@ class DocsetConfigTests(unittest.TestCase):
         self.assertEqual(config.source_id, "example-docs")
         self.assertEqual(config.chunking.strategy, "markdown-sections")
         self.assertEqual(config.providers.generation.model, "gpt-5.4")
+        self.assertIn("Answer questions", config.prompts.qa_style)
+        self.assertIn("Compress documentation", config.prompts.compression_style)
+
+    def test_new_prompt_fields_default_to_empty_strings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir) / "minimal.yaml"
+            tmp.write_text(
+                "source_id: minimal\nlabel: Minimal\nrepo_path: docs/minimal\n",
+                encoding="utf-8",
+            )
+
+            config = load_docset_config(tmp)
+            self.assertEqual(config.prompts.qa_style, "")
+            self.assertEqual(config.prompts.compression_style, "")
 
     def test_disabled_docset_is_skipped_from_directory_load(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
