@@ -6,6 +6,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
+from .chunking import ChunkingError, DocumentChunk, chunk_documents
 from .config import ConfigError, load_docset_config, load_docset_configs
 from .discovery import DiscoveryError, discover_docset_files, resolve_docset_repo_path
 from .document_loading import DocumentLoadingError, SourceDocument, load_documents
@@ -42,6 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Include full document text in the JSON output",
     )
 
+    chunk_preview_parser = subparsers.add_parser(
+        "preview-chunks",
+        help="Load documents, chunk them, and print a JSON preview",
+    )
+    chunk_preview_parser.add_argument("config_path", help="Path to a docset YAML config")
+
     return parser
 
 
@@ -56,6 +63,21 @@ def _document_preview_payload(document: SourceDocument, *, include_content: bool
     if include_content:
         payload["content"] = document.content
     return payload
+
+
+def _chunk_preview_payload(chunk: DocumentChunk) -> dict[str, object]:
+    return {
+        "source_id": chunk.source_id,
+        "absolute_path": str(chunk.absolute_path),
+        "repo_relative_path": chunk.repo_relative_path,
+        "file_type": chunk.file_type,
+        "document_index": chunk.document_index,
+        "chunk_index": chunk.chunk_index,
+        "start_char": chunk.start_char,
+        "end_char": chunk.end_char,
+        "character_count": chunk.character_count,
+        "content": chunk.content,
+    }
 
 
 def main() -> int:
@@ -95,9 +117,32 @@ def main() -> int:
             print(json.dumps(payload, indent=2))
             return 0
 
+        if args.command == "preview-chunks":
+            config = load_docset_config(Path(args.config_path))
+            documents = load_documents(config)
+            chunks = chunk_documents(
+                documents,
+                strategy=config.chunking.strategy,
+                max_chars=config.chunking.max_chars,
+                overlap_chars=config.chunking.overlap_chars,
+            )
+            payload = {
+                "source_id": config.source_id,
+                "document_count": len(documents),
+                "chunk_count": len(chunks),
+                "chunking": {
+                    "strategy": config.chunking.strategy,
+                    "max_chars": config.chunking.max_chars,
+                    "overlap_chars": config.chunking.overlap_chars,
+                },
+                "chunks": [_chunk_preview_payload(chunk) for chunk in chunks],
+            }
+            print(json.dumps(payload, indent=2))
+            return 0
+
         parser.error(f"Unsupported command: {args.command}")
         return 2
-    except (ConfigError, DiscoveryError, DocumentLoadingError) as exc:
+    except (ChunkingError, ConfigError, DiscoveryError, DocumentLoadingError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

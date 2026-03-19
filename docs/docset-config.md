@@ -121,3 +121,16 @@ PYTHONPATH=src python3 -m docemoria.cli list-source-files configs/docsets/exampl
 ```
 
 This command resolves `repo_path`, applies `ingest.include_globs`, removes matches from `ingest.exclude_globs`, and prints the final repo-relative file list that would enter the ingest pipeline.
+
+Preview the current chunking output for one docset:
+
+```bash
+PYTHONPATH=src python3 -m docemoria.cli preview-chunks configs/docsets/example.yaml
+```
+
+Current MVP chunking supports two strategies:
+
+- `fixed-windows`: split every document into ordered character windows using `chunking.max_chars` and `chunking.overlap_chars`
+- `markdown-sections`: for markdown files, split on heading boundaries first and only apply overlapping character windows inside sections that still exceed `chunking.max_chars`
+
+When `markdown-sections` is selected for a text file, or for a markdown file without headings, Docemoria falls back to the same fixed-window behavior.
