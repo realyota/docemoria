@@ -6,6 +6,7 @@ A docset config describes one local documentation source and the defaults that s
 
 - where the source repo lives
 - whether it is enabled
+- file selection rules for ingest
 - prompt overrides
 - provider defaults
 - chunking defaults
@@ -45,6 +46,8 @@ See `configs/docsets/example.yaml`.
 ### Optional
 
 - `enabled`: defaults to `true`
+- `ingest.include_globs`: glob patterns to include during ingest, defaults to `['**/*.md', '**/*.txt']`
+- `ingest.exclude_globs`: glob patterns to skip during ingest, defaults to `[]`
 - `prompts.system`
 - `prompts.notes_style`
 - `prompts.qa_style`: task-specific guidance for future documentation Q&A flows
@@ -63,6 +66,28 @@ See `configs/docsets/example.yaml`.
 - `card_generation.audience`
 - `export.obsidian_path`
 - `export.anki_path`
+
+## Ingest file selection
+
+The optional `ingest` section lets a docset narrow which files should enter the pipeline before parsing and chunking.
+
+Example:
+
+```yaml
+ingest:
+  include_globs:
+    - docs/**/*.md
+    - reference/**/*.txt
+  exclude_globs:
+    - docs/archive/**
+    - '**/node_modules/**'
+```
+
+This keeps ingest practical for MVP work:
+
+- include the parts of a repo that are actually documentation,
+- exclude vendored, generated, archived, or irrelevant paths,
+- keep downstream study-material generation and future Q&A grounded in better source selection.
 
 ## Prompt structure
 

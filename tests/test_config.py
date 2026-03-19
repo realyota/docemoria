@@ -26,6 +26,62 @@ class DocsetConfigTests(unittest.TestCase):
             self.assertEqual(config.prompts.qa_style, "")
             self.assertEqual(config.prompts.compression_style, "")
 
+    def test_ingest_defaults_include_markdown_and_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir) / "minimal.yaml"
+            tmp.write_text(
+                "source_id: minimal\nlabel: Minimal\nrepo_path: docs/minimal\n",
+                encoding="utf-8",
+            )
+
+            config = load_docset_config(tmp)
+            self.assertEqual(config.ingest.include_globs, ["**/*.md", "**/*.txt"])
+            self.assertEqual(config.ingest.exclude_globs, [])
+
+    def test_ingest_globs_can_be_overridden(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir) / "scoped.yaml"
+            tmp.write_text(
+                "\n".join(
+                    [
+                        "source_id: scoped",
+                        "label: Scoped",
+                        "repo_path: docs/scoped",
+                        "ingest:",
+                        "  include_globs:",
+                        "    - docs/**/*.md",
+                        "  exclude_globs:",
+                        "    - docs/archive/**",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            config = load_docset_config(tmp)
+            self.assertEqual(config.ingest.include_globs, ["docs/**/*.md"])
+            self.assertEqual(config.ingest.exclude_globs, ["docs/archive/**"])
+
+    def test_invalid_ingest_globs_raise(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir) / "broken.yaml"
+            tmp.write_text(
+                "\n".join(
+                    [
+                        "source_id: broken",
+                        "label: Broken",
+                        "repo_path: docs/broken",
+                        "ingest:",
+                        "  include_globs: docs/**/*.md",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(ConfigError):
+                load_docset_config(tmp)
+
     def test_disabled_docset_is_skipped_from_directory_load(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)

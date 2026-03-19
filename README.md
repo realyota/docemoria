@@ -229,6 +229,7 @@ At minimum, a docset config should eventually describe:
 
 - source repository location
 - file/include rules
+- file/exclude rules
 - parsing strategy
 - chunking strategy
 - prompt overrides
@@ -278,6 +279,7 @@ Current implemented slice:
 
 - Python package scaffold in `src/docemoria/`
 - YAML-backed docset config loader and validator
+- per-docset ingest file selection rules (`include_globs` / `exclude_globs`)
 - simple CLI to list docsets or inspect a single config
 - initial tests for config loading behavior
 - config format notes in `docs/docset-config.md`

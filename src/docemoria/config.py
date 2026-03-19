@@ -32,6 +32,12 @@ class ProvidersConfig:
 
 
 @dataclass(slots=True)
+class IngestConfig:
+    include_globs: list[str] = field(default_factory=lambda: ["**/*.md", "**/*.txt"])
+    exclude_globs: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class ChunkingConfig:
     strategy: str = "markdown-sections"
     max_chars: int = 1800
@@ -65,6 +71,7 @@ class DocsetConfig:
     enabled: bool = True
     prompts: PromptConfig = field(default_factory=PromptConfig)
     providers: ProvidersConfig = field(default_factory=ProvidersConfig)
+    ingest: IngestConfig = field(default_factory=IngestConfig)
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
     card_generation: CardGenerationConfig = field(default_factory=CardGenerationConfig)
@@ -113,6 +120,21 @@ def _parse_provider_model(data: dict[str, Any], section_name: str, *, path: Path
     )
 
 
+def _optional_string_list(data: dict[str, Any], key: str, *, path: Path, default: list[str]) -> list[str]:
+    value = data.get(key)
+    if value is None:
+        return list(default)
+    if not isinstance(value, list):
+        raise ConfigError(f"Field '{key}' must be a list of strings in {path}")
+
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ConfigError(f"Field '{key}' must contain only non-empty strings in {path}")
+        result.append(item.strip())
+    return result
+
+
 def _validate_no_unknown_missing_basics(data: dict[str, Any], *, path: Path) -> None:
     for key in REQUIRED_TOP_LEVEL_FIELDS:
         if key not in data:
@@ -125,6 +147,7 @@ def load_docset_config(path: Path) -> DocsetConfig:
 
     prompts = _optional_mapping(raw, "prompts", path=path)
     providers = _optional_mapping(raw, "providers", path=path)
+    ingest = _optional_mapping(raw, "ingest", path=path)
     chunking = _optional_mapping(raw, "chunking", path=path)
     retrieval = _optional_mapping(raw, "retrieval", path=path)
     card_generation = _optional_mapping(raw, "card_generation", path=path)
@@ -151,6 +174,20 @@ def load_docset_config(path: Path) -> DocsetConfig:
                 _optional_mapping(providers, "generation", path=path),
                 "generation",
                 path=path,
+            ),
+        ),
+        ingest=IngestConfig(
+            include_globs=_optional_string_list(
+                ingest,
+                "include_globs",
+                path=path,
+                default=["**/*.md", "**/*.txt"],
+            ),
+            exclude_globs=_optional_string_list(
+                ingest,
+                "exclude_globs",
+                path=path,
+                default=[],
             ),
         ),
         chunking=ChunkingConfig(

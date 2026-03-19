@@ -32,6 +32,16 @@ providers:
     provider: openai
     model: gpt-5.4
 
+ingest:
+  include_globs:
+    - docs/**/*.md
+    - reference/**/*.md
+    - guides/**/*.txt
+  exclude_globs:
+    - docs/archive/**
+    - '**/node_modules/**'
+    - '**/.git/**'
+
 chunking:
   strategy: markdown-sections
   max_chars: 1800
