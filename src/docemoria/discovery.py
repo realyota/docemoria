@@ -19,12 +19,7 @@ def resolve_docset_repo_path(config: DocsetConfig) -> Path:
         return repo_path
 
     if config.config_path:
-        config_relative = (config_path.parent / repo_path).resolve()
-        if config_relative.exists():
-            return config_relative
-
-        workspace_root = config_path.parent.parent.parent
-        return (workspace_root / repo_path).resolve()
+        return (config_path.parent / repo_path).resolve()
 
     return repo_path.resolve()
 

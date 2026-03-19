@@ -1,6 +1,6 @@
 source_id: example-docs
 label: Example Docs
-repo_path: docsets/example-docs
+repo_path: ../../docsets/example-docs
 enabled: true
 
 prompts:

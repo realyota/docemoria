@@ -27,7 +27,7 @@ configs/docsets/*.yaml
 ```yaml
 source_id: python-docs
 label: Python Docs
-repo_path: docsets/python-docs
+repo_path: ../../docsets/python-docs
 enabled: true
 ```
 

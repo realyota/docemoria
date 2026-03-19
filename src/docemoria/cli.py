@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .config import ConfigError, load_docset_config, load_docset_configs
 from .discovery import DiscoveryError, discover_docset_files, resolve_docset_repo_path
+from .document_loading import DocumentLoadingError, SourceDocument, load_documents
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,7 +31,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     discover_parser.add_argument("config_path", help="Path to a docset YAML config")
 
+    preview_parser = subparsers.add_parser(
+        "preview-documents",
+        help="Load discovered markdown/text source documents and print a JSON preview",
+    )
+    preview_parser.add_argument("config_path", help="Path to a docset YAML config")
+    preview_parser.add_argument(
+        "--include-content",
+        action="store_true",
+        help="Include full document text in the JSON output",
+    )
+
     return parser
+
+
+def _document_preview_payload(document: SourceDocument, *, include_content: bool) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "source_id": document.source_id,
+        "absolute_path": str(document.absolute_path),
+        "repo_relative_path": document.repo_relative_path,
+        "file_type": document.file_type,
+        "character_count": document.character_count,
+    }
+    if include_content:
+        payload["content"] = document.content
+    return payload
 
 
 def main() -> int:
@@ -56,9 +81,23 @@ def main() -> int:
                 print(path.relative_to(repo_root).as_posix())
             return 0
 
+        if args.command == "preview-documents":
+            config = load_docset_config(Path(args.config_path))
+            documents = load_documents(config)
+            payload = {
+                "source_id": config.source_id,
+                "document_count": len(documents),
+                "documents": [
+                    _document_preview_payload(document, include_content=args.include_content)
+                    for document in documents
+                ],
+            }
+            print(json.dumps(payload, indent=2))
+            return 0
+
         parser.error(f"Unsupported command: {args.command}")
         return 2
-    except (ConfigError, DiscoveryError) as exc:
+    except (ConfigError, DiscoveryError, DocumentLoadingError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

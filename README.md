@@ -281,8 +281,9 @@ Current implemented slice:
 - YAML-backed docset config loader and validator
 - per-docset ingest file selection rules (`include_globs` / `exclude_globs`)
 - source file discovery that resolves `repo_path` and applies ingest globs
-- simple CLI to list docsets, inspect a single config, or preview selected source files
-- initial tests for config loading and file discovery behavior
+- minimal document loader that reads discovered UTF-8 `.md` / `.txt` files into an in-memory document model
+- simple CLI to list docsets, inspect a single config, preview selected source files, or preview loaded document metadata
+- initial tests for config loading, file discovery, document loading, and CLI behavior
 - config format notes in `docs/docset-config.md`
 
 ---
