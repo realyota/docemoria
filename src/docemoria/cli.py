@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from .config import load_docset_config, load_docset_configs
+from .config import ConfigError, load_docset_config, load_docset_configs
+from .discovery import DiscoveryError, discover_docset_files, resolve_docset_repo_path
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,6 +24,12 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser = subparsers.add_parser("show-docset", help="Load and print a single docset config")
     validate_parser.add_argument("config_path", help="Path to a docset YAML config")
 
+    discover_parser = subparsers.add_parser(
+        "list-source-files",
+        help="List source files selected for ingest from one docset",
+    )
+    discover_parser.add_argument("config_path", help="Path to a docset YAML config")
+
     return parser
 
 
@@ -29,19 +37,30 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    if args.command == "list-docsets":
-        configs = load_docset_configs(Path(args.configs_dir))
-        payload = [asdict(config) for config in configs]
-        print(json.dumps(payload, indent=2))
-        return 0
+    try:
+        if args.command == "list-docsets":
+            configs = load_docset_configs(Path(args.configs_dir))
+            payload = [asdict(config) for config in configs]
+            print(json.dumps(payload, indent=2))
+            return 0
 
-    if args.command == "show-docset":
-        config = load_docset_config(Path(args.config_path))
-        print(json.dumps(asdict(config), indent=2))
-        return 0
+        if args.command == "show-docset":
+            config = load_docset_config(Path(args.config_path))
+            print(json.dumps(asdict(config), indent=2))
+            return 0
 
-    parser.error(f"Unsupported command: {args.command}")
-    return 2
+        if args.command == "list-source-files":
+            config = load_docset_config(Path(args.config_path))
+            repo_root = resolve_docset_repo_path(config)
+            for path in discover_docset_files(config):
+                print(path.relative_to(repo_root).as_posix())
+            return 0
+
+        parser.error(f"Unsupported command: {args.command}")
+        return 2
+    except (ConfigError, DiscoveryError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

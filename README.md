@@ -280,8 +280,9 @@ Current implemented slice:
 - Python package scaffold in `src/docemoria/`
 - YAML-backed docset config loader and validator
 - per-docset ingest file selection rules (`include_globs` / `exclude_globs`)
-- simple CLI to list docsets or inspect a single config
-- initial tests for config loading behavior
+- source file discovery that resolves `repo_path` and applies ingest globs
+- simple CLI to list docsets, inspect a single config, or preview selected source files
+- initial tests for config loading and file discovery behavior
 - config format notes in `docs/docset-config.md`
 
 ---

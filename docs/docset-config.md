@@ -41,7 +41,7 @@ See `configs/docsets/example.yaml`.
 
 - `source_id`: stable machine-readable identifier
 - `label`: human-readable name
-- `repo_path`: path to the local checked-out docs repo
+- `repo_path`: path to the local checked-out docs repo; relative paths are resolved from the config file location
 
 ### Optional
 
@@ -113,3 +113,11 @@ Show one resolved config:
 ```bash
 PYTHONPATH=src python3 -m docemoria.cli show-docset configs/docsets/example.yaml
 ```
+
+Preview source files selected for ingest from one docset:
+
+```bash
+PYTHONPATH=src python3 -m docemoria.cli list-source-files configs/docsets/example.yaml
+```
+
+This command resolves `repo_path`, applies `ingest.include_globs`, removes matches from `ingest.exclude_globs`, and prints the final repo-relative file list that would enter the ingest pipeline.

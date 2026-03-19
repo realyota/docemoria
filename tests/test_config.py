@@ -3,6 +3,7 @@ import tempfile
 import unittest
 
 from docemoria.config import ConfigError, load_docset_config, load_docset_configs
+from docemoria.discovery import DiscoveryError, discover_docset_files, resolve_docset_repo_path
 
 
 class DocsetConfigTests(unittest.TestCase):
@@ -104,6 +105,67 @@ class DocsetConfigTests(unittest.TestCase):
 
             with self.assertRaises(ConfigError):
                 load_docset_config(tmp)
+
+    def test_repo_path_is_resolved_from_config_location(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            config_path = root / "configs" / "docsets" / "example.yaml"
+            repo_root = root / "repos" / "example-docs"
+            config_path.parent.mkdir(parents=True)
+            repo_root.mkdir(parents=True)
+            config_path.write_text(
+                "source_id: example\nlabel: Example\nrepo_path: ../../repos/example-docs\n",
+                encoding="utf-8",
+            )
+
+            config = load_docset_config(config_path)
+            resolved = resolve_docset_repo_path(config)
+            self.assertEqual(resolved, repo_root.resolve())
+
+    def test_discover_docset_files_applies_include_and_exclude_globs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            repo = root / "docsets" / "sample-docs"
+            (repo / "docs").mkdir(parents=True)
+            (repo / "docs" / "keep.md").write_text("keep", encoding="utf-8")
+            (repo / "docs" / "skip.md").write_text("skip", encoding="utf-8")
+            (repo / "notes.txt").write_text("ignore", encoding="utf-8")
+
+            config_path = root / "configs" / "docsets" / "sample.yaml"
+            config_path.parent.mkdir(parents=True)
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "source_id: sample",
+                        "label: Sample",
+                        "repo_path: ../../docsets/sample-docs",
+                        "ingest:",
+                        "  include_globs:",
+                        "    - docs/**/*.md",
+                        "  exclude_globs:",
+                        "    - docs/skip.md",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            config = load_docset_config(config_path)
+            files = discover_docset_files(config)
+            self.assertEqual(files, [(repo / "docs" / "keep.md").resolve()])
+
+    def test_discover_docset_files_raises_for_missing_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "configs" / "docsets" / "missing.yaml"
+            config_path.parent.mkdir(parents=True)
+            config_path.write_text(
+                "source_id: missing\nlabel: Missing\nrepo_path: docsets/missing\n",
+                encoding="utf-8",
+            )
+
+            config = load_docset_config(config_path)
+            with self.assertRaises(DiscoveryError):
+                discover_docset_files(config)
 
 
 if __name__ == "__main__":
