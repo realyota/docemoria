@@ -25,6 +25,7 @@ class ChunkingTests(unittest.TestCase):
                 (2, 6, 10, "ghij"),
             ],
         )
+        self.assertEqual([(chunk.heading_title, chunk.heading_level) for chunk in chunks], [(None, None), (None, None), (None, None)])
 
     def test_chunk_documents_preserves_document_order_and_indexes(self) -> None:
         documents = [
@@ -82,6 +83,7 @@ class ChunkingTests(unittest.TestCase):
                 (1, second_heading_start, len(content), "## Details\ngamma\n"),
             ],
         )
+        self.assertEqual([(chunk.heading_title, chunk.heading_level) for chunk in chunks], [("Intro", 1), ("Details", 2)])
 
     def test_chunk_document_windows_oversized_markdown_section_without_crossing_headings(self) -> None:
         content = "# Intro\nabcdefghij\n# Next\nok\n"
@@ -110,6 +112,7 @@ class ChunkingTests(unittest.TestCase):
                 (2, next_heading_start, len(content), "# Next\nok\n"),
             ],
         )
+        self.assertEqual([(chunk.heading_title, chunk.heading_level) for chunk in chunks], [("Intro", 1), ("Intro", 1), ("Next", 1)])
 
     def test_chunk_document_markdown_sections_falls_back_to_fixed_windows_without_headings(self) -> None:
         document = SourceDocument(
@@ -135,6 +138,7 @@ class ChunkingTests(unittest.TestCase):
                 (2, 6, 10, "ghij"),
             ],
         )
+        self.assertEqual([(chunk.heading_title, chunk.heading_level) for chunk in chunks], [(None, None), (None, None), (None, None)])
 
     def test_chunk_document_markdown_sections_falls_back_to_fixed_windows_for_text_files(self) -> None:
         document = SourceDocument(
@@ -158,6 +162,34 @@ class ChunkingTests(unittest.TestCase):
                 (0, 0, 5, "abcde"),
                 (1, 3, 8, "defgh"),
                 (2, 6, 10, "ghij"),
+            ],
+        )
+        self.assertEqual([(chunk.heading_title, chunk.heading_level) for chunk in chunks], [(None, None), (None, None), (None, None)])
+
+    def test_chunk_document_fixed_windows_sets_nearest_markdown_heading_metadata(self) -> None:
+        content = "# Intro\nabc\n## Next\ndef\n"
+        document = SourceDocument(
+            source_id="sample",
+            absolute_path=Path("/tmp/sample.md"),
+            repo_relative_path="docs/sample.md",
+            content=content,
+            file_type="markdown",
+        )
+
+        chunks = chunk_document(
+            document,
+            strategy="fixed-windows",
+            max_chars=6,
+            overlap_chars=0,
+        )
+
+        self.assertEqual(
+            [(chunk.start_char, chunk.end_char, chunk.heading_title, chunk.heading_level) for chunk in chunks],
+            [
+                (0, 6, "Intro", 1),
+                (6, 12, "Intro", 1),
+                (12, 18, "Next", 2),
+                (18, 24, "Next", 2),
             ],
         )
 

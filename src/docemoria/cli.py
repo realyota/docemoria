@@ -76,6 +76,8 @@ def _chunk_preview_payload(chunk: DocumentChunk) -> dict[str, object]:
         "start_char": chunk.start_char,
         "end_char": chunk.end_char,
         "character_count": chunk.character_count,
+        "heading_title": chunk.heading_title,
+        "heading_level": chunk.heading_level,
         "content": chunk.content,
     }
 

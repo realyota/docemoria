@@ -23,6 +23,8 @@ class DocumentChunk:
     start_char: int
     end_char: int
     content: str
+    heading_title: str | None = None
+    heading_level: int | None = None
 
     @property
     def character_count(self) -> int:
@@ -30,14 +32,23 @@ class DocumentChunk:
 
 
 SUPPORTED_CHUNKING_STRATEGIES = {"fixed-windows", "markdown-sections"}
-_ATX_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+.*$")
+_ATX_HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.+?)\s*$")
 _FENCE_RE = re.compile(r"^[ \t]*```")
+
+
+@dataclass(slots=True)
+class _Heading:
+    start_char: int
+    level: int
+    title: str
 
 
 @dataclass(slots=True)
 class _SectionSpan:
     start_char: int
     end_char: int
+    heading_title: str | None = None
+    heading_level: int | None = None
 
 
 def _validate_chunking_inputs(*, max_chars: int, overlap_chars: int) -> None:
@@ -64,6 +75,8 @@ def _build_chunk(
     chunk_index: int,
     start_char: int,
     end_char: int,
+    heading_title: str | None = None,
+    heading_level: int | None = None,
 ) -> DocumentChunk:
     return DocumentChunk(
         source_id=document.source_id,
@@ -75,6 +88,8 @@ def _build_chunk(
         start_char=start_char,
         end_char=end_char,
         content=document.content[start_char:end_char],
+        heading_title=heading_title,
+        heading_level=heading_level,
     )
 
 
@@ -101,9 +116,13 @@ def _chunk_document_fixed_windows(
     chunk_index_offset: int = 0,
     start_char_offset: int = 0,
     content: str | None = None,
+    heading_title: str | None = None,
+    heading_level: int | None = None,
+    heading_anchors: list[_Heading] | None = None,
 ) -> list[DocumentChunk]:
     chunk_content = document.content if content is None else content
     chunks: list[DocumentChunk] = []
+    heading_index = -1
 
     for relative_index, (start_char, end_char) in enumerate(
         _fixed_window_spans(
@@ -112,41 +131,84 @@ def _chunk_document_fixed_windows(
             overlap_chars=overlap_chars,
         )
     ):
+        absolute_start_char = start_char_offset + start_char
+        chunk_heading_title = heading_title
+        chunk_heading_level = heading_level
+        if (
+            chunk_heading_title is None
+            and chunk_heading_level is None
+            and heading_anchors is not None
+        ):
+            while (
+                heading_index + 1 < len(heading_anchors)
+                and heading_anchors[heading_index + 1].start_char <= absolute_start_char
+            ):
+                heading_index += 1
+            if heading_index >= 0:
+                chunk_heading_title = heading_anchors[heading_index].title
+                chunk_heading_level = heading_anchors[heading_index].level
         chunks.append(
             _build_chunk(
                 document,
                 document_index=document_index,
                 chunk_index=chunk_index_offset + relative_index,
-                start_char=start_char_offset + start_char,
+                start_char=absolute_start_char,
                 end_char=start_char_offset + end_char,
+                heading_title=chunk_heading_title,
+                heading_level=chunk_heading_level,
             )
         )
 
     return chunks
 
 
-def _markdown_section_spans(content: str) -> list[_SectionSpan]:
-    heading_positions: list[int] = []
+def _parse_heading_line(line: str) -> tuple[int, str] | None:
+    match = _ATX_HEADING_RE.match(line.rstrip("\r\n"))
+    if match is None:
+        return None
+
+    title = re.sub(r"[ \t]+#+[ \t]*$", "", match.group(2)).strip()
+    if not title:
+        return None
+    return len(match.group(1)), title
+
+
+def _markdown_headings(content: str) -> list[_Heading]:
+    headings: list[_Heading] = []
     inside_fence = False
     cursor = 0
 
     for line in content.splitlines(keepends=True):
         if _FENCE_RE.match(line):
             inside_fence = not inside_fence
-        elif not inside_fence and _ATX_HEADING_RE.match(line):
-            heading_positions.append(cursor)
+        elif not inside_fence:
+            parsed_heading = _parse_heading_line(line)
+            if parsed_heading is not None:
+                level, title = parsed_heading
+                headings.append(_Heading(start_char=cursor, level=level, title=title))
         cursor += len(line)
 
-    if not heading_positions:
+    return headings
+
+
+def _markdown_section_spans(content: str, headings: list[_Heading]) -> list[_SectionSpan]:
+    if not headings:
         return []
 
     spans: list[_SectionSpan] = []
-    if heading_positions[0] > 0:
-        spans.append(_SectionSpan(start_char=0, end_char=heading_positions[0]))
+    if headings[0].start_char > 0:
+        spans.append(_SectionSpan(start_char=0, end_char=headings[0].start_char))
 
-    for index, start_char in enumerate(heading_positions):
-        end_char = heading_positions[index + 1] if index + 1 < len(heading_positions) else len(content)
-        spans.append(_SectionSpan(start_char=start_char, end_char=end_char))
+    for index, heading in enumerate(headings):
+        end_char = headings[index + 1].start_char if index + 1 < len(headings) else len(content)
+        spans.append(
+            _SectionSpan(
+                start_char=heading.start_char,
+                end_char=end_char,
+                heading_title=heading.title,
+                heading_level=heading.level,
+            )
+        )
 
     return [span for span in spans if span.start_char < span.end_char]
 
@@ -166,14 +228,15 @@ def _chunk_document_markdown_sections(
             document_index=document_index,
         )
 
-    section_spans = _markdown_section_spans(document.content)
-    if not section_spans:
+    headings = _markdown_headings(document.content)
+    if not headings:
         return _chunk_document_fixed_windows(
             document,
             max_chars=max_chars,
             overlap_chars=overlap_chars,
             document_index=document_index,
         )
+    section_spans = _markdown_section_spans(document.content, headings)
 
     chunks: list[DocumentChunk] = []
     next_chunk_index = 0
@@ -188,6 +251,8 @@ def _chunk_document_markdown_sections(
                     chunk_index=next_chunk_index,
                     start_char=span.start_char,
                     end_char=span.end_char,
+                    heading_title=span.heading_title,
+                    heading_level=span.heading_level,
                 )
             )
             next_chunk_index += 1
@@ -201,6 +266,8 @@ def _chunk_document_markdown_sections(
             chunk_index_offset=next_chunk_index,
             start_char_offset=span.start_char,
             content=document.content[span.start_char : span.end_char],
+            heading_title=span.heading_title,
+            heading_level=span.heading_level,
         )
         chunks.extend(section_chunks)
         next_chunk_index += len(section_chunks)
@@ -223,11 +290,15 @@ def chunk_document(
         return []
 
     if normalized_strategy == "fixed-windows":
+        heading_anchors: list[_Heading] | None = None
+        if document.file_type == "markdown":
+            heading_anchors = _markdown_headings(document.content)
         return _chunk_document_fixed_windows(
             document,
             max_chars=max_chars,
             overlap_chars=overlap_chars,
             document_index=document_index,
+            heading_anchors=heading_anchors,
         )
 
     return _chunk_document_markdown_sections(

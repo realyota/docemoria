@@ -134,3 +134,8 @@ Current MVP chunking supports two strategies:
 - `markdown-sections`: for markdown files, split on heading boundaries first and only apply overlapping character windows inside sections that still exceed `chunking.max_chars`
 
 When `markdown-sections` is selected for a text file, or for a markdown file without headings, Docemoria falls back to the same fixed-window behavior.
+
+Chunk preview JSON now includes optional markdown heading context on each chunk:
+
+- `heading_title`: nearest markdown ATX heading text when available
+- `heading_level`: heading depth (`1`-`6`) for `heading_title`

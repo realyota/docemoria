@@ -152,14 +152,16 @@ class CliTests(unittest.TestCase):
                         chunk["chunk_index"],
                         chunk["start_char"],
                         chunk["end_char"],
+                        chunk["heading_title"],
+                        chunk["heading_level"],
                         chunk["content"],
                     )
                     for chunk in payload["chunks"]
                 ],
                 [
-                    (0, 0, 0, 5, "abcde"),
-                    (0, 1, 3, 8, "defgh"),
-                    (0, 2, 6, 10, "ghij"),
+                    (0, 0, 0, 5, None, None, "abcde"),
+                    (0, 1, 3, 8, None, None, "defgh"),
+                    (0, 2, 6, 10, None, None, "ghij"),
                 ],
             )
 
@@ -207,13 +209,15 @@ class CliTests(unittest.TestCase):
                         chunk["chunk_index"],
                         chunk["start_char"],
                         chunk["end_char"],
+                        chunk["heading_title"],
+                        chunk["heading_level"],
                         chunk["content"],
                     )
                     for chunk in payload["chunks"]
                 ],
                 [
-                    (0, 0, content.index("## Details\n"), "# Intro\nalpha\n"),
-                    (1, content.index("## Details\n"), len(content), "## Details\ngamma\n"),
+                    (0, 0, content.index("## Details\n"), "Intro", 1, "# Intro\nalpha\n"),
+                    (1, content.index("## Details\n"), len(content), "Details", 2, "## Details\ngamma\n"),
                 ],
             )
 
