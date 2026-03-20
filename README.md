@@ -122,6 +122,11 @@ Different documentation sets require different treatment. API docs, architecture
 - Keep the data model practical and inspectable
 - Favor simplicity over premature distributed complexity
 
+Current Milestone 1 storage bootstrap is intentionally small and provides two APIs:
+- `open_database(db_path)` to open a local DuckDB file (creating parent directories when needed),
+- `initialize_schema(connection)` to create the core ingest tables:
+  `ingest_runs`, `sources`, `documents`, `chunks`.
+
 ### Provider abstraction
 The system should separate:
 
@@ -282,8 +287,10 @@ Current implemented slice:
 - per-docset ingest file selection rules (`include_globs` / `exclude_globs`)
 - source file discovery that resolves `repo_path` and applies ingest globs
 - minimal document loader that reads discovered UTF-8 `.md` / `.txt` files into an in-memory document model
-- simple CLI to list docsets, inspect a single config, preview selected source files, or preview loaded document metadata
-- initial tests for config loading, file discovery, document loading, and CLI behavior
+- chunk preview flow with `fixed-windows` and `markdown-sections` strategies
+- minimal DuckDB storage bootstrap for the first ingest schema (`ingest_runs`, `sources`, `documents`, `chunks`)
+- simple CLI to list docsets, inspect a single config, preview selected source files/documents/chunks, or initialize the database schema
+- initial tests for config loading, discovery, document loading, chunking, storage bootstrap, and CLI behavior
 - config format notes in `docs/docset-config.md`
 
 ---

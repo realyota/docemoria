@@ -10,6 +10,7 @@ from .chunking import ChunkingError, DocumentChunk, chunk_documents
 from .config import ConfigError, load_docset_config, load_docset_configs
 from .discovery import DiscoveryError, discover_docset_files, resolve_docset_repo_path
 from .document_loading import DocumentLoadingError, SourceDocument, load_documents
+from .storage import StorageError, initialize_schema, open_database
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,6 +49,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Load documents, chunk them, and print a JSON preview",
     )
     chunk_preview_parser.add_argument("config_path", help="Path to a docset YAML config")
+
+    init_db_parser = subparsers.add_parser(
+        "init-db",
+        help="Create a DuckDB database file and initialize the minimal ingest schema",
+    )
+    init_db_parser.add_argument("db_path", help="Path to the DuckDB database file")
 
     return parser
 
@@ -142,9 +149,20 @@ def main() -> int:
             print(json.dumps(payload, indent=2))
             return 0
 
+        if args.command == "init-db":
+            with open_database(Path(args.db_path)) as connection:
+                initialize_schema(connection)
+            payload = {
+                "db_path": str(Path(args.db_path).expanduser().resolve()),
+                "schema_initialized": True,
+                "tables": ["ingest_runs", "sources", "documents", "chunks"],
+            }
+            print(json.dumps(payload, indent=2))
+            return 0
+
         parser.error(f"Unsupported command: {args.command}")
         return 2
-    except (ChunkingError, ConfigError, DiscoveryError, DocumentLoadingError) as exc:
+    except (ChunkingError, ConfigError, DiscoveryError, DocumentLoadingError, StorageError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

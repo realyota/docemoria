@@ -12,13 +12,17 @@ Zaimplementowane w kodzie:
   - `fixed-windows`
   - `markdown-sections`
   - metadata nagłówków (`heading_title`, `heading_level`)
+- minimalny bootstrap storage na DuckDB:
+  - otwieranie bazy
+  - inicjalizacja schematu `ingest_runs` / `sources` / `documents` / `chunks`
 - CLI:
   - `list-docsets`
   - `show-docset`
   - `list-source-files`
   - `preview-documents`
   - `preview-chunks`
-- testy jednostkowe dla config/discovery/loading/chunking/CLI
+  - `init-db`
+- testy jednostkowe dla config/loading/chunking/storage/CLI
 
 Braki względem Ingest MVP:
 
@@ -40,8 +44,8 @@ Zakres zakończony:
 
 Zakres do zrobienia (w kolejności implementacji):
 
-- [ ] dodać zależność `duckdb` i moduł `storage`
-- [ ] zdefiniować minimalny schemat tabel:
+- [x] dodać zależność `duckdb` i moduł `storage`
+- [x] zdefiniować minimalny schemat tabel:
   - `ingest_runs`
   - `sources`
   - `documents`

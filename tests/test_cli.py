@@ -4,7 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from docemoria import cli
 
@@ -220,6 +220,26 @@ class CliTests(unittest.TestCase):
                     (1, content.index("## Details\n"), len(content), "Details", 2, "## Details\ngamma\n"),
                 ],
             )
+
+    def test_init_db_initializes_schema_and_prints_summary(self) -> None:
+        stdout = io.StringIO()
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+
+        with contextlib.redirect_stdout(stdout), patch("sys.argv", ["docemoria", "init-db", "./tmp/docemoria.duckdb"]), patch(
+            "docemoria.cli.open_database",
+            return_value=connection,
+        ) as open_database_mock, patch("docemoria.cli.initialize_schema") as initialize_schema_mock:
+            exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        open_database_mock.assert_called_once()
+        initialize_schema_mock.assert_called_once_with(connection)
+        self.assertTrue(payload["schema_initialized"])
+        self.assertEqual(payload["tables"], ["ingest_runs", "sources", "documents", "chunks"])
+        self.assertTrue(payload["db_path"].endswith("tmp/docemoria.duckdb"))
 
 
 if __name__ == "__main__":
