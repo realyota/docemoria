@@ -262,8 +262,10 @@ class CliTests(unittest.TestCase):
         ) as ingest_docset_mock:
             exit_code = cli.main()
 
-        payload = json.loads(stdout.getvalue())
+        rendered = stdout.getvalue().strip()
+        payload = json.loads(rendered)
         self.assertEqual(exit_code, 0)
+        self.assertNotIn("\n", rendered)
         ingest_docset_mock.assert_called_once_with(
             config_path,
             db_path=Path("./tmp/docemoria.duckdb"),

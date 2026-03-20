@@ -182,7 +182,7 @@ def main() -> int:
                 "db_path": result.db_path,
                 "status": result.status,
             }
-            print(json.dumps(payload, indent=2))
+            print(json.dumps(payload, separators=(",", ":")))
             return 0
 
         parser.error(f"Unsupported command: {args.command}")
