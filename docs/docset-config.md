@@ -153,3 +153,27 @@ The command prints a compact JSON summary with:
 - `chunk_count`
 - `db_path`
 - `status`
+
+Inspect one persisted ingest run summary:
+
+```bash
+PYTHONPATH=src python3 -m docemoria.cli show-ingest-run --db-path data/docemoria.duckdb
+```
+
+Inspect a specific run by id:
+
+```bash
+PYTHONPATH=src python3 -m docemoria.cli show-ingest-run --db-path data/docemoria.duckdb --run-id 7
+```
+
+The command prints compact JSON with:
+- `run_id`
+- `source_id`
+- `status`
+- `started_at`
+- `finished_at`
+- `document_count`
+- `chunk_count`
+- `persisted_document_count`
+- `persisted_chunk_count`
+- `error_message`

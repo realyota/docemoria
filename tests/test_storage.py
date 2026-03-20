@@ -6,6 +6,7 @@ from pathlib import Path
 import docemoria
 
 from docemoria.ingest import ingest_docset
+from docemoria.ingest_results import fetch_ingest_run_summary
 from docemoria.storage import StorageError, initialize_schema, open_database
 
 DUCKDB_AVAILABLE = importlib.util.find_spec("duckdb") is not None
@@ -20,6 +21,63 @@ class StorageApiSurfaceTests(unittest.TestCase):
     def test_initialize_schema_requires_connection(self) -> None:
         with self.assertRaisesRegex(StorageError, "DuckDB connection is required"):
             initialize_schema(None)  # type: ignore[arg-type]
+
+    def test_fetch_ingest_run_summary_maps_row_to_dataclass(self) -> None:
+        class FakeCursor:
+            def __init__(self, row: tuple[object, ...] | None) -> None:
+                self._row = row
+
+            def fetchone(self) -> tuple[object, ...] | None:
+                return self._row
+
+        class FakeConnection:
+            def __init__(self, row: tuple[object, ...] | None) -> None:
+                self.row = row
+                self.calls: list[tuple[str, list[int] | None]] = []
+
+            def execute(self, query: str, params: list[int] | None = None) -> FakeCursor:
+                self.calls.append((query, params))
+                return FakeCursor(self.row)
+
+        connection = FakeConnection(
+            (
+                7,
+                "sample",
+                "success",
+                "2026-03-20 15:58:01",
+                "2026-03-20 15:58:02",
+                2,
+                5,
+                2,
+                5,
+                None,
+            )
+        )
+        summary = fetch_ingest_run_summary(connection, run_id=7)  # type: ignore[arg-type]
+
+        self.assertEqual(summary.run_id, 7)
+        self.assertEqual(summary.source_id, "sample")
+        self.assertEqual(summary.persisted_document_count, 2)
+        self.assertEqual(summary.persisted_chunk_count, 5)
+        self.assertEqual(connection.calls[0][1], [7])
+
+    def test_fetch_ingest_run_summary_raises_when_no_runs_exist(self) -> None:
+        class FakeCursor:
+            def fetchone(self) -> tuple[object, ...] | None:
+                return None
+
+        class FakeConnection:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, list[int] | None]] = []
+
+            def execute(self, query: str, params: list[int] | None = None) -> FakeCursor:
+                self.calls.append((query, params))
+                return FakeCursor()
+
+        connection = FakeConnection()
+        with self.assertRaisesRegex(StorageError, "No ingest runs found in DuckDB"):
+            fetch_ingest_run_summary(connection)  # type: ignore[arg-type]
+        self.assertIsNone(connection.calls[0][1])
 
 
 @unittest.skipUnless(DUCKDB_AVAILABLE, "duckdb is required for storage tests")
@@ -169,6 +227,85 @@ class StorageBootstrapTests(unittest.TestCase):
             chunk_count = connection.execute("SELECT COUNT(*) FROM chunks WHERE run_id = ?", [result.run_id]).fetchone()[0]
             self.assertEqual(document_count, result.document_count)
             self.assertEqual(chunk_count, result.chunk_count)
+
+    def test_fetch_ingest_run_summary_returns_latest_run_with_persisted_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "docemoria.duckdb"
+            connection = open_database(db_path)
+            self.addCleanup(connection.close)
+            initialize_schema(connection)
+
+            connection.execute(
+                """
+                INSERT INTO ingest_runs (run_id, source_id, status, document_count, chunk_count, finished_at)
+                VALUES (1, 'alpha', 'success', 10, 20, CURRENT_TIMESTAMP)
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO ingest_runs (run_id, source_id, status, document_count, chunk_count, finished_at)
+                VALUES (2, 'beta', 'success', 3, 4, CURRENT_TIMESTAMP)
+                """
+            )
+
+            connection.execute(
+                """
+                INSERT INTO documents (
+                    run_id,
+                    document_index,
+                    source_id,
+                    repo_relative_path,
+                    absolute_path,
+                    file_type,
+                    character_count,
+                    content
+                )
+                VALUES
+                    (2, 0, 'beta', 'docs/a.md', '/tmp/a.md', 'markdown', 11, 'hello world'),
+                    (2, 1, 'beta', 'docs/b.md', '/tmp/b.md', 'markdown', 5, 'abcde')
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO chunks (
+                    run_id,
+                    document_index,
+                    chunk_index,
+                    source_id,
+                    repo_relative_path,
+                    file_type,
+                    start_char,
+                    end_char,
+                    character_count,
+                    heading_title,
+                    heading_level,
+                    content
+                )
+                VALUES
+                    (2, 0, 0, 'beta', 'docs/a.md', 'markdown', 0, 5, 5, NULL, NULL, 'hello'),
+                    (2, 1, 0, 'beta', 'docs/b.md', 'markdown', 0, 5, 5, NULL, NULL, 'abcde'),
+                    (2, 1, 1, 'beta', 'docs/b.md', 'markdown', 0, 2, 2, NULL, NULL, 'ab')
+                """
+            )
+
+            summary = fetch_ingest_run_summary(connection)
+            self.assertEqual(summary.run_id, 2)
+            self.assertEqual(summary.source_id, "beta")
+            self.assertEqual(summary.document_count, 3)
+            self.assertEqual(summary.chunk_count, 4)
+            self.assertEqual(summary.persisted_document_count, 2)
+            self.assertEqual(summary.persisted_chunk_count, 3)
+            self.assertEqual(summary.status, "success")
+
+    def test_fetch_ingest_run_summary_raises_for_missing_run_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "docemoria.duckdb"
+            connection = open_database(db_path)
+            self.addCleanup(connection.close)
+            initialize_schema(connection)
+
+            with self.assertRaisesRegex(StorageError, "Ingest run not found: 999"):
+                fetch_ingest_run_summary(connection, run_id=999)
 
 
 if __name__ == "__main__":

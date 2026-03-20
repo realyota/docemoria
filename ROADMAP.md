@@ -22,12 +22,12 @@ Zaimplementowane w kodzie:
   - `preview-documents`
   - `preview-chunks`
   - `init-db`
+  - `show-ingest-run`
 - testy jednostkowe dla config/loading/chunking/storage/CLI
 
 Braki względem Ingest MVP:
 
-- brak bardziej rozbudowanego raportowania / inspekcji danych po ingest
-- brak dokumentacji odczytu danych z DB po zakończeniu ingestu
+- dostępna jest podstawowa inspekcja wyników po ingest (`show-ingest-run`), ale bez rozszerzonego raportowania trendów między runami
 - brak szerszych testów scenariuszy błędów i rollbacku transakcji
 
 ## Milestone 1 — Ingest MVP (dokończenie)

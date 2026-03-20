@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from docemoria import cli
 from docemoria.ingest import IngestResult
+from docemoria.ingest_results import IngestRunSummary
 
 
 class CliTests(unittest.TestCase):
@@ -281,6 +282,79 @@ class CliTests(unittest.TestCase):
                 "status": "success",
             },
         )
+
+    def test_show_ingest_run_prints_latest_summary_json_by_default(self) -> None:
+        stdout = io.StringIO()
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            ["docemoria", "show-ingest-run", "--db-path", "./tmp/docemoria.duckdb"],
+        ), patch(
+            "docemoria.cli.open_database",
+            return_value=connection,
+        ) as open_database_mock, patch(
+            "docemoria.cli.fetch_ingest_run_summary",
+            return_value=IngestRunSummary(
+                run_id=11,
+                source_id="sample",
+                status="success",
+                started_at="2026-03-20 15:58:01",
+                finished_at="2026-03-20 15:58:02",
+                document_count=2,
+                chunk_count=5,
+                persisted_document_count=2,
+                persisted_chunk_count=5,
+                error_message=None,
+            ),
+        ) as fetch_summary_mock:
+            exit_code = cli.main()
+
+        rendered = stdout.getvalue().strip()
+        payload = json.loads(rendered)
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("\n", rendered)
+        open_database_mock.assert_called_once_with(Path("./tmp/docemoria.duckdb"))
+        fetch_summary_mock.assert_called_once_with(connection, run_id=None)
+        self.assertEqual(payload["run_id"], 11)
+        self.assertEqual(payload["persisted_document_count"], 2)
+        self.assertEqual(payload["persisted_chunk_count"], 5)
+
+    def test_show_ingest_run_passes_explicit_run_id(self) -> None:
+        stdout = io.StringIO()
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            ["docemoria", "show-ingest-run", "--db-path", "./tmp/docemoria.duckdb", "--run-id", "7"],
+        ), patch(
+            "docemoria.cli.open_database",
+            return_value=connection,
+        ), patch(
+            "docemoria.cli.fetch_ingest_run_summary",
+            return_value=IngestRunSummary(
+                run_id=7,
+                source_id="sample",
+                status="success",
+                started_at="2026-03-20 15:58:01",
+                finished_at="2026-03-20 15:58:02",
+                document_count=2,
+                chunk_count=5,
+                persisted_document_count=2,
+                persisted_chunk_count=5,
+                error_message=None,
+            ),
+        ) as fetch_summary_mock:
+            exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue().strip())
+        self.assertEqual(exit_code, 0)
+        fetch_summary_mock.assert_called_once_with(connection, run_id=7)
+        self.assertEqual(payload["run_id"], 7)
 
 
 if __name__ == "__main__":

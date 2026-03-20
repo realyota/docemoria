@@ -11,6 +11,7 @@ from .config import ConfigError, load_docset_config, load_docset_configs
 from .discovery import DiscoveryError, discover_docset_files, resolve_docset_repo_path
 from .document_loading import DocumentLoadingError, SourceDocument, load_documents
 from .ingest import DEFAULT_DB_PATH, ingest_docset
+from .ingest_results import fetch_ingest_run_summary
 from .storage import StorageError, initialize_schema, open_database
 
 
@@ -66,6 +67,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--db-path",
         default=DEFAULT_DB_PATH,
         help=f"Path to DuckDB database file (default: {DEFAULT_DB_PATH})",
+    )
+
+    show_ingest_parser = subparsers.add_parser(
+        "show-ingest-run",
+        help="Show one persisted ingest run summary from DuckDB (latest by default)",
+    )
+    show_ingest_parser.add_argument(
+        "--db-path",
+        default=DEFAULT_DB_PATH,
+        help=f"Path to DuckDB database file (default: {DEFAULT_DB_PATH})",
+    )
+    show_ingest_parser.add_argument(
+        "--run-id",
+        type=int,
+        help="Specific ingest run_id to inspect (default: latest run)",
     )
 
     return parser
@@ -183,6 +199,12 @@ def main() -> int:
                 "status": result.status,
             }
             print(json.dumps(payload, separators=(",", ":")))
+            return 0
+
+        if args.command == "show-ingest-run":
+            with open_database(Path(args.db_path)) as connection:
+                summary = fetch_ingest_run_summary(connection, run_id=args.run_id)
+            print(json.dumps(asdict(summary), separators=(",", ":")))
             return 0
 
         parser.error(f"Unsupported command: {args.command}")
