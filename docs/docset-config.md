@@ -139,3 +139,17 @@ Chunk preview JSON now includes optional markdown heading context on each chunk:
 
 - `heading_title`: nearest markdown ATX heading text when available
 - `heading_level`: heading depth (`1`-`6`) for `heading_title`
+
+Run one end-to-end ingest and persist to DuckDB:
+
+```bash
+PYTHONPATH=src python3 -m docemoria.cli ingest-docset configs/docsets/example.yaml --db-path data/docemoria.duckdb
+```
+
+The command prints a compact JSON summary with:
+- `run_id`
+- `source_id`
+- `document_count`
+- `chunk_count`
+- `db_path`
+- `status`

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import docemoria
 
+from docemoria.ingest import ingest_docset
 from docemoria.storage import StorageError, initialize_schema, open_database
 
 DUCKDB_AVAILABLE = importlib.util.find_spec("duckdb") is not None
@@ -104,6 +105,70 @@ class StorageBootstrapTests(unittest.TestCase):
                     "content",
                 }.issubset(chunk_columns)
             )
+
+    def test_ingest_docset_persists_rows_in_core_tables(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            repo = root / "repos" / "sample-docs"
+            config_path = root / "configs" / "docsets" / "sample.yaml"
+            db_path = root / "data" / "docemoria.duckdb"
+            (repo / "docs").mkdir(parents=True)
+            config_path.parent.mkdir(parents=True)
+
+            (repo / "docs" / "intro.md").write_text("# Intro\nabcdef\n", encoding="utf-8")
+            (repo / "notes.txt").write_text("remember this\n", encoding="utf-8")
+            config_path.write_text(
+                "\n".join(
+                    [
+                        "source_id: sample",
+                        "label: Sample docs",
+                        "repo_path: ../../repos/sample-docs",
+                        "chunking:",
+                        "  strategy: fixed-windows",
+                        "  max_chars: 5",
+                        "  overlap_chars: 0",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            result = ingest_docset(config_path, db_path=db_path)
+
+            self.assertEqual(result.source_id, "sample")
+            self.assertEqual(result.document_count, 2)
+            self.assertEqual(result.status, "success")
+            self.assertTrue(result.db_path.endswith("data/docemoria.duckdb"))
+
+            connection = open_database(db_path)
+            self.addCleanup(connection.close)
+
+            run_row = connection.execute(
+                """
+                SELECT status, document_count, chunk_count
+                FROM ingest_runs
+                WHERE run_id = ?
+                """,
+                [result.run_id],
+            ).fetchone()
+            self.assertEqual(run_row, ("success", 2, result.chunk_count))
+
+            source_row = connection.execute(
+                """
+                SELECT source_id, label, repo_path
+                FROM sources
+                WHERE source_id = ?
+                """,
+                [result.source_id],
+            ).fetchone()
+            self.assertEqual(source_row[0], "sample")
+            self.assertEqual(source_row[1], "Sample docs")
+            self.assertEqual(source_row[2], str(repo.resolve()))
+
+            document_count = connection.execute("SELECT COUNT(*) FROM documents WHERE run_id = ?", [result.run_id]).fetchone()[0]
+            chunk_count = connection.execute("SELECT COUNT(*) FROM chunks WHERE run_id = ?", [result.run_id]).fetchone()[0]
+            self.assertEqual(document_count, result.document_count)
+            self.assertEqual(chunk_count, result.chunk_count)
 
 
 if __name__ == "__main__":

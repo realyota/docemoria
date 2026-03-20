@@ -26,10 +26,9 @@ Zaimplementowane w kodzie:
 
 Braki względem Ingest MVP:
 
-- brak warstwy storage (DuckDB)
-- brak trwałego zapisu `sources/documents/chunks`
-- brak `ingest run` i historii przetworzeń
-- brak komendy CLI uruchamiającej pełny ingest end-to-end
+- brak bardziej rozbudowanego raportowania / inspekcji danych po ingest
+- brak dokumentacji odczytu danych z DB po zakończeniu ingestu
+- brak szerszych testów scenariuszy błędów i rollbacku transakcji
 
 ## Milestone 1 — Ingest MVP (dokończenie)
 
@@ -50,11 +49,11 @@ Zakres do zrobienia (w kolejności implementacji):
   - `sources`
   - `documents`
   - `chunks`
-- [ ] wdrożyć zapis ingestu w transakcji (`discover -> load -> chunk -> persist`)
-- [ ] dodać komendę CLI `ingest-docset <config_path> [--db-path ...]`
-- [ ] dodać podstawowy raport wyników ingestu (run id, document_count, chunk_count)
-- [ ] dodać test integracyjny ingestu z tymczasową bazą DuckDB
-- [ ] zaktualizować dokumentację uruchomienia ingestu
+- [x] wdrożyć zapis ingestu w transakcji (`discover -> load -> chunk -> persist`)
+- [x] dodać komendę CLI `ingest-docset <config_path> [--db-path ...]`
+- [x] dodać podstawowy raport wyników ingestu (run id, document_count, chunk_count)
+- [x] dodać test integracyjny ingestu z tymczasową bazą DuckDB
+- [x] zaktualizować dokumentację uruchomienia ingestu
 
 Definition of Done (Milestone 1):
 

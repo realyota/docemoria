@@ -10,6 +10,7 @@ from .chunking import ChunkingError, DocumentChunk, chunk_documents
 from .config import ConfigError, load_docset_config, load_docset_configs
 from .discovery import DiscoveryError, discover_docset_files, resolve_docset_repo_path
 from .document_loading import DocumentLoadingError, SourceDocument, load_documents
+from .ingest import DEFAULT_DB_PATH, ingest_docset
 from .storage import StorageError, initialize_schema, open_database
 
 
@@ -55,6 +56,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Create a DuckDB database file and initialize the minimal ingest schema",
     )
     init_db_parser.add_argument("db_path", help="Path to the DuckDB database file")
+
+    ingest_parser = subparsers.add_parser(
+        "ingest-docset",
+        help="Run full ingest for one docset and persist results to DuckDB",
+    )
+    ingest_parser.add_argument("config_path", help="Path to a docset YAML config")
+    ingest_parser.add_argument(
+        "--db-path",
+        default=DEFAULT_DB_PATH,
+        help=f"Path to DuckDB database file (default: {DEFAULT_DB_PATH})",
+    )
 
     return parser
 
@@ -156,6 +168,19 @@ def main() -> int:
                 "db_path": str(Path(args.db_path).expanduser().resolve()),
                 "schema_initialized": True,
                 "tables": ["ingest_runs", "sources", "documents", "chunks"],
+            }
+            print(json.dumps(payload, indent=2))
+            return 0
+
+        if args.command == "ingest-docset":
+            result = ingest_docset(Path(args.config_path), db_path=Path(args.db_path))
+            payload = {
+                "run_id": result.run_id,
+                "source_id": result.source_id,
+                "document_count": result.document_count,
+                "chunk_count": result.chunk_count,
+                "db_path": result.db_path,
+                "status": result.status,
             }
             print(json.dumps(payload, indent=2))
             return 0

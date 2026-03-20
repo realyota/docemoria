@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from docemoria import cli
+from docemoria.ingest import IngestResult
 
 
 class CliTests(unittest.TestCase):
@@ -240,6 +241,44 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["schema_initialized"])
         self.assertEqual(payload["tables"], ["ingest_runs", "sources", "documents", "chunks"])
         self.assertTrue(payload["db_path"].endswith("tmp/docemoria.duckdb"))
+
+    def test_ingest_docset_prints_summary_json(self) -> None:
+        config_path = Path("configs/docsets/example.yaml")
+        stdout = io.StringIO()
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            ["docemoria", "ingest-docset", str(config_path), "--db-path", "./tmp/docemoria.duckdb"],
+        ), patch(
+            "docemoria.cli.ingest_docset",
+            return_value=IngestResult(
+                run_id=7,
+                source_id="example",
+                document_count=2,
+                chunk_count=5,
+                db_path="/tmp/docemoria.duckdb",
+                status="success",
+            ),
+        ) as ingest_docset_mock:
+            exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        ingest_docset_mock.assert_called_once_with(
+            config_path,
+            db_path=Path("./tmp/docemoria.duckdb"),
+        )
+        self.assertEqual(
+            payload,
+            {
+                "run_id": 7,
+                "source_id": "example",
+                "document_count": 2,
+                "chunk_count": 5,
+                "db_path": "/tmp/docemoria.duckdb",
+                "status": "success",
+            },
+        )
 
 
 if __name__ == "__main__":
