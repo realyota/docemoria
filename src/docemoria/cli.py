@@ -128,6 +128,7 @@ def _chunk_preview_payload(chunk: DocumentChunk) -> dict[str, object]:
         "start_char": chunk.start_char,
         "end_char": chunk.end_char,
         "character_count": chunk.character_count,
+        "document_title": chunk.document_title,
         "heading_title": chunk.heading_title,
         "heading_level": chunk.heading_level,
         "heading_path": None if chunk.heading_path is None else list(chunk.heading_path),

@@ -102,6 +102,7 @@ def _insert_chunks(
             chunk.start_char,
             chunk.end_char,
             chunk.character_count,
+            chunk.document_title,
             chunk.heading_title,
             chunk.heading_level,
             _serialize_heading_path(chunk.heading_path),
@@ -124,12 +125,13 @@ def _insert_chunks(
             start_char,
             end_char,
             character_count,
+            document_title,
             heading_title,
             heading_level,
             heading_path,
             content
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rows,
     )

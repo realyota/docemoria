@@ -63,6 +63,7 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
         start_char INTEGER NOT NULL,
         end_char INTEGER NOT NULL,
         character_count INTEGER NOT NULL,
+        document_title TEXT,
         heading_title TEXT,
         heading_level INTEGER,
         heading_path TEXT,
@@ -81,6 +82,15 @@ def _ensure_chunk_heading_path_column(connection: "duckdb.DuckDBPyConnection") -
     }
     if "heading_path" not in chunk_columns:
         connection.execute("ALTER TABLE chunks ADD COLUMN heading_path TEXT")
+
+
+def _ensure_chunk_document_title_column(connection: "duckdb.DuckDBPyConnection") -> None:
+    chunk_columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info('chunks')").fetchall()
+    }
+    if "document_title" not in chunk_columns:
+        connection.execute("ALTER TABLE chunks ADD COLUMN document_title TEXT")
 
 
 def _ensure_document_title_column(connection: "duckdb.DuckDBPyConnection") -> None:
@@ -120,6 +130,7 @@ def initialize_schema(connection: "duckdb.DuckDBPyConnection") -> None:
     try:
         for statement in SCHEMA_STATEMENTS:
             connection.execute(statement)
+        _ensure_chunk_document_title_column(connection)
         _ensure_chunk_heading_path_column(connection)
         _ensure_document_title_column(connection)
     except Exception as exc:

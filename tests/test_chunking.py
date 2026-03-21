@@ -13,6 +13,7 @@ class ChunkingTests(unittest.TestCase):
             repo_relative_path="docs/sample.md",
             content="abcdefghij",
             file_type="markdown",
+            document_title="Sample Doc",
         )
 
         chunks = chunk_document(document, max_chars=5, overlap_chars=2)
@@ -27,6 +28,7 @@ class ChunkingTests(unittest.TestCase):
         )
         self.assertEqual([(chunk.heading_title, chunk.heading_level) for chunk in chunks], [(None, None), (None, None), (None, None)])
         self.assertEqual([chunk.heading_path for chunk in chunks], [None, None, None])
+        self.assertEqual([chunk.document_title for chunk in chunks], ["Sample Doc", "Sample Doc", "Sample Doc"])
 
     def test_chunk_documents_preserves_document_order_and_indexes(self) -> None:
         documents = [
@@ -36,6 +38,7 @@ class ChunkingTests(unittest.TestCase):
                 repo_relative_path="docs/one.md",
                 content="12345",
                 file_type="markdown",
+                document_title="Doc One",
             ),
             SourceDocument(
                 source_id="sample",
@@ -43,18 +46,19 @@ class ChunkingTests(unittest.TestCase):
                 repo_relative_path="docs/two.txt",
                 content="abcdef",
                 file_type="text",
+                document_title="Doc Two",
             ),
         ]
 
         chunks = chunk_documents(documents, max_chars=4, overlap_chars=1)
 
         self.assertEqual(
-            [(chunk.document_index, chunk.chunk_index, chunk.repo_relative_path, chunk.content) for chunk in chunks],
+            [(chunk.document_index, chunk.chunk_index, chunk.repo_relative_path, chunk.document_title, chunk.content) for chunk in chunks],
             [
-                (0, 0, "docs/one.md", "1234"),
-                (0, 1, "docs/one.md", "45"),
-                (1, 0, "docs/two.txt", "abcd"),
-                (1, 1, "docs/two.txt", "def"),
+                (0, 0, "docs/one.md", "Doc One", "1234"),
+                (0, 1, "docs/one.md", "Doc One", "45"),
+                (1, 0, "docs/two.txt", "Doc Two", "abcd"),
+                (1, 1, "docs/two.txt", "Doc Two", "def"),
             ],
         )
 

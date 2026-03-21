@@ -156,6 +156,7 @@ class CliTests(unittest.TestCase):
                         chunk["chunk_index"],
                         chunk["start_char"],
                         chunk["end_char"],
+                        chunk["document_title"],
                         chunk["heading_title"],
                         chunk["heading_level"],
                         chunk["heading_path"],
@@ -164,9 +165,9 @@ class CliTests(unittest.TestCase):
                     for chunk in payload["chunks"]
                 ],
                 [
-                    (0, 0, 0, 5, None, None, None, "abcde"),
-                    (0, 1, 3, 8, None, None, None, "defgh"),
-                    (0, 2, 6, 10, None, None, None, "ghij"),
+                    (0, 0, 0, 5, None, None, None, None, "abcde"),
+                    (0, 1, 3, 8, None, None, None, None, "defgh"),
+                    (0, 2, 6, 10, None, None, None, None, "ghij"),
                 ],
             )
 
@@ -214,6 +215,7 @@ class CliTests(unittest.TestCase):
                         chunk["chunk_index"],
                         chunk["start_char"],
                         chunk["end_char"],
+                        chunk["document_title"],
                         chunk["heading_title"],
                         chunk["heading_level"],
                         chunk["heading_path"],
@@ -222,11 +224,12 @@ class CliTests(unittest.TestCase):
                     for chunk in payload["chunks"]
                 ],
                 [
-                    (0, 0, content.index("## Details\n"), "Intro", 1, ["Intro"], "# Intro\nalpha\n"),
+                    (0, 0, content.index("## Details\n"), "Intro", "Intro", 1, ["Intro"], "# Intro\nalpha\n"),
                     (
                         1,
                         content.index("## Details\n"),
                         len(content),
+                        "Intro",
                         "Details",
                         2,
                         ["Intro", "Details"],

@@ -232,12 +232,49 @@ class StorageBootstrapTests(unittest.TestCase):
                     "start_char",
                     "end_char",
                     "character_count",
+                    "document_title",
                     "heading_title",
                     "heading_level",
                     "heading_path",
                     "content",
                 }.issubset(chunk_columns)
             )
+
+    def test_initialize_schema_adds_document_title_column_to_existing_chunks_table(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "docemoria.duckdb"
+            connection = open_database(db_path)
+            self.addCleanup(connection.close)
+
+            connection.execute(
+                """
+                CREATE TABLE chunks (
+                    run_id BIGINT NOT NULL,
+                    document_index INTEGER NOT NULL,
+                    chunk_index INTEGER NOT NULL,
+                    source_id TEXT NOT NULL,
+                    repo_relative_path TEXT NOT NULL,
+                    file_type TEXT NOT NULL,
+                    start_char INTEGER NOT NULL,
+                    end_char INTEGER NOT NULL,
+                    character_count INTEGER NOT NULL,
+                    heading_title TEXT,
+                    heading_level INTEGER,
+                    heading_path TEXT,
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (run_id, document_index, chunk_index)
+                )
+                """
+            )
+
+            initialize_schema(connection)
+
+            chunk_columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info('chunks')").fetchall()
+            }
+            self.assertIn("document_title", chunk_columns)
 
     def test_ingest_docset_persists_rows_in_core_tables(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -303,6 +340,16 @@ class StorageBootstrapTests(unittest.TestCase):
                 [result.run_id],
             ).fetchone()
             self.assertEqual(document_title_row[0], "Intro")
+
+            chunk_document_title_row = connection.execute(
+                """
+                SELECT document_title
+                FROM chunks
+                WHERE run_id = ? AND document_index = 0 AND chunk_index = 0
+                """,
+                [result.run_id],
+            ).fetchone()
+            self.assertEqual(chunk_document_title_row[0], "Intro")
 
             document_count = connection.execute("SELECT COUNT(*) FROM documents WHERE run_id = ?", [result.run_id]).fetchone()[0]
             chunk_count = connection.execute("SELECT COUNT(*) FROM chunks WHERE run_id = ?", [result.run_id]).fetchone()[0]

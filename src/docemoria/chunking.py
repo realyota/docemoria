@@ -23,6 +23,7 @@ class DocumentChunk:
     start_char: int
     end_char: int
     content: str
+    document_title: str | None = None
     heading_title: str | None = None
     heading_level: int | None = None
     heading_path: tuple[str, ...] | None = None
@@ -92,6 +93,7 @@ def _build_chunk(
         start_char=start_char,
         end_char=end_char,
         content=document.content[start_char:end_char],
+        document_title=document.document_title,
         heading_title=heading_title,
         heading_level=heading_level,
         heading_path=heading_path,
