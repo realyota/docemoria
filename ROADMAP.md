@@ -11,7 +11,7 @@ Zaimplementowane w kodzie:
 - chunking:
   - `fixed-windows`
   - `markdown-sections`
-  - metadata nagłówków (`heading_title`, `heading_level`)
+  - metadata nagłówków (`heading_title`, `heading_level`, `heading_path`)
 - minimalny bootstrap storage na DuckDB:
   - otwieranie bazy
   - inicjalizacja schematu `ingest_runs` / `sources` / `documents` / `chunks`

@@ -156,14 +156,15 @@ class CliTests(unittest.TestCase):
                         chunk["end_char"],
                         chunk["heading_title"],
                         chunk["heading_level"],
+                        chunk["heading_path"],
                         chunk["content"],
                     )
                     for chunk in payload["chunks"]
                 ],
                 [
-                    (0, 0, 0, 5, None, None, "abcde"),
-                    (0, 1, 3, 8, None, None, "defgh"),
-                    (0, 2, 6, 10, None, None, "ghij"),
+                    (0, 0, 0, 5, None, None, None, "abcde"),
+                    (0, 1, 3, 8, None, None, None, "defgh"),
+                    (0, 2, 6, 10, None, None, None, "ghij"),
                 ],
             )
 
@@ -213,13 +214,22 @@ class CliTests(unittest.TestCase):
                         chunk["end_char"],
                         chunk["heading_title"],
                         chunk["heading_level"],
+                        chunk["heading_path"],
                         chunk["content"],
                     )
                     for chunk in payload["chunks"]
                 ],
                 [
-                    (0, 0, content.index("## Details\n"), "Intro", 1, "# Intro\nalpha\n"),
-                    (1, content.index("## Details\n"), len(content), "Details", 2, "## Details\ngamma\n"),
+                    (0, 0, content.index("## Details\n"), "Intro", 1, ["Intro"], "# Intro\nalpha\n"),
+                    (
+                        1,
+                        content.index("## Details\n"),
+                        len(content),
+                        "Details",
+                        2,
+                        ["Intro", "Details"],
+                        "## Details\ngamma\n",
+                    ),
                 ],
             )
 
@@ -296,6 +306,8 @@ class CliTests(unittest.TestCase):
             "docemoria.cli.open_database",
             return_value=connection,
         ) as open_database_mock, patch(
+            "docemoria.cli.initialize_schema",
+        ) as initialize_schema_mock, patch(
             "docemoria.cli.fetch_ingest_run_summary",
             return_value=IngestRunSummary(
                 run_id=11,
@@ -307,6 +319,7 @@ class CliTests(unittest.TestCase):
                 chunk_count=5,
                 persisted_document_count=2,
                 persisted_chunk_count=5,
+                persisted_chunk_heading_path_count=4,
                 error_message=None,
             ),
         ) as fetch_summary_mock:
@@ -317,10 +330,12 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertNotIn("\n", rendered)
         open_database_mock.assert_called_once_with(Path("./tmp/docemoria.duckdb"))
+        initialize_schema_mock.assert_called_once_with(connection)
         fetch_summary_mock.assert_called_once_with(connection, run_id=None)
         self.assertEqual(payload["run_id"], 11)
         self.assertEqual(payload["persisted_document_count"], 2)
         self.assertEqual(payload["persisted_chunk_count"], 5)
+        self.assertEqual(payload["persisted_chunk_heading_path_count"], 4)
 
     def test_show_ingest_run_passes_explicit_run_id(self) -> None:
         stdout = io.StringIO()
@@ -335,6 +350,8 @@ class CliTests(unittest.TestCase):
             "docemoria.cli.open_database",
             return_value=connection,
         ), patch(
+            "docemoria.cli.initialize_schema",
+        ) as initialize_schema_mock, patch(
             "docemoria.cli.fetch_ingest_run_summary",
             return_value=IngestRunSummary(
                 run_id=7,
@@ -346,6 +363,7 @@ class CliTests(unittest.TestCase):
                 chunk_count=5,
                 persisted_document_count=2,
                 persisted_chunk_count=5,
+                persisted_chunk_heading_path_count=3,
                 error_message=None,
             ),
         ) as fetch_summary_mock:
@@ -353,8 +371,66 @@ class CliTests(unittest.TestCase):
 
         payload = json.loads(stdout.getvalue().strip())
         self.assertEqual(exit_code, 0)
+        initialize_schema_mock.assert_called_once_with(connection)
         fetch_summary_mock.assert_called_once_with(connection, run_id=7)
         self.assertEqual(payload["run_id"], 7)
+
+    def test_list_ingest_runs_prints_compact_json_and_respects_limit(self) -> None:
+        stdout = io.StringIO()
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            ["docemoria", "list-ingest-runs", "--db-path", "./tmp/docemoria.duckdb", "--limit", "3"],
+        ), patch(
+            "docemoria.cli.open_database",
+            return_value=connection,
+        ) as open_database_mock, patch(
+            "docemoria.cli.initialize_schema",
+        ) as initialize_schema_mock, patch(
+            "docemoria.cli.fetch_recent_ingest_runs",
+            return_value=[
+                IngestRunSummary(
+                    run_id=12,
+                    source_id="sample-a",
+                    status="success",
+                    started_at="2026-03-20 15:58:03",
+                    finished_at="2026-03-20 15:58:06",
+                    document_count=4,
+                    chunk_count=9,
+                    persisted_document_count=4,
+                    persisted_chunk_count=9,
+                    persisted_chunk_heading_path_count=8,
+                    error_message=None,
+                ),
+                IngestRunSummary(
+                    run_id=11,
+                    source_id="sample-b",
+                    status="failed",
+                    started_at="2026-03-20 15:58:01",
+                    finished_at="2026-03-20 15:58:02",
+                    document_count=3,
+                    chunk_count=0,
+                    persisted_document_count=2,
+                    persisted_chunk_count=0,
+                    persisted_chunk_heading_path_count=0,
+                    error_message="boom",
+                ),
+            ],
+        ) as fetch_recent_mock:
+            exit_code = cli.main()
+
+        rendered = stdout.getvalue().strip()
+        payload = json.loads(rendered)
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("\n", rendered)
+        open_database_mock.assert_called_once_with(Path("./tmp/docemoria.duckdb"))
+        initialize_schema_mock.assert_called_once_with(connection)
+        fetch_recent_mock.assert_called_once_with(connection, limit=3)
+        self.assertEqual([entry["run_id"] for entry in payload], [12, 11])
+        self.assertEqual(payload[1]["error_message"], "boom")
 
 
 if __name__ == "__main__":

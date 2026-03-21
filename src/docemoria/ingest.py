@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import Iterable
 
@@ -13,6 +14,12 @@ from .storage import StorageError, initialize_schema, open_database
 DEFAULT_DB_PATH = "data/docemoria.duckdb"
 _RUNNING_STATUS = "running"
 _SUCCESS_STATUS = "success"
+
+
+def _serialize_heading_path(heading_path: tuple[str, ...] | None) -> str | None:
+    if heading_path is None:
+        return None
+    return json.dumps(list(heading_path), separators=(",", ":"))
 
 
 @dataclass(slots=True)
@@ -95,6 +102,7 @@ def _insert_chunks(
             chunk.character_count,
             chunk.heading_title,
             chunk.heading_level,
+            _serialize_heading_path(chunk.heading_path),
             chunk.content,
         )
         for chunk in chunks
@@ -116,9 +124,10 @@ def _insert_chunks(
             character_count,
             heading_title,
             heading_level,
+            heading_path,
             content
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rows,
     )

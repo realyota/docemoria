@@ -11,7 +11,7 @@ from .config import ConfigError, load_docset_config, load_docset_configs
 from .discovery import DiscoveryError, discover_docset_files, resolve_docset_repo_path
 from .document_loading import DocumentLoadingError, SourceDocument, load_documents
 from .ingest import DEFAULT_DB_PATH, ingest_docset
-from .ingest_results import fetch_ingest_run_summary
+from .ingest_results import fetch_ingest_run_summary, fetch_recent_ingest_runs
 from .storage import StorageError, initialize_schema, open_database
 
 
@@ -84,6 +84,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Specific ingest run_id to inspect (default: latest run)",
     )
 
+    list_ingest_parser = subparsers.add_parser(
+        "list-ingest-runs",
+        help="List recent persisted ingest runs from DuckDB",
+    )
+    list_ingest_parser.add_argument(
+        "--db-path",
+        default=DEFAULT_DB_PATH,
+        help=f"Path to DuckDB database file (default: {DEFAULT_DB_PATH})",
+    )
+    list_ingest_parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Maximum number of recent runs to include (default: 10)",
+    )
+
     return parser
 
 
@@ -113,6 +129,7 @@ def _chunk_preview_payload(chunk: DocumentChunk) -> dict[str, object]:
         "character_count": chunk.character_count,
         "heading_title": chunk.heading_title,
         "heading_level": chunk.heading_level,
+        "heading_path": None if chunk.heading_path is None else list(chunk.heading_path),
         "content": chunk.content,
     }
 
@@ -203,8 +220,16 @@ def main() -> int:
 
         if args.command == "show-ingest-run":
             with open_database(Path(args.db_path)) as connection:
+                initialize_schema(connection)
                 summary = fetch_ingest_run_summary(connection, run_id=args.run_id)
             print(json.dumps(asdict(summary), separators=(",", ":")))
+            return 0
+
+        if args.command == "list-ingest-runs":
+            with open_database(Path(args.db_path)) as connection:
+                initialize_schema(connection)
+                summaries = fetch_recent_ingest_runs(connection, limit=args.limit)
+            print(json.dumps([asdict(summary) for summary in summaries], separators=(",", ":")))
             return 0
 
         parser.error(f"Unsupported command: {args.command}")

@@ -26,6 +26,7 @@ class ChunkingTests(unittest.TestCase):
             ],
         )
         self.assertEqual([(chunk.heading_title, chunk.heading_level) for chunk in chunks], [(None, None), (None, None), (None, None)])
+        self.assertEqual([chunk.heading_path for chunk in chunks], [None, None, None])
 
     def test_chunk_documents_preserves_document_order_and_indexes(self) -> None:
         documents = [
@@ -84,9 +85,10 @@ class ChunkingTests(unittest.TestCase):
             ],
         )
         self.assertEqual([(chunk.heading_title, chunk.heading_level) for chunk in chunks], [("Intro", 1), ("Details", 2)])
+        self.assertEqual([chunk.heading_path for chunk in chunks], [("Intro",), ("Intro", "Details")])
 
     def test_chunk_document_windows_oversized_markdown_section_without_crossing_headings(self) -> None:
-        content = "# Intro\nabcdefghij\n# Next\nok\n"
+        content = "# Root\n## Intro\nabcdefghij\n## Next\nok\n"
         document = SourceDocument(
             source_id="sample",
             absolute_path=Path("/tmp/sample.md"),
@@ -95,7 +97,8 @@ class ChunkingTests(unittest.TestCase):
             file_type="markdown",
         )
 
-        next_heading_start = content.index("# Next\n")
+        intro_heading_start = content.index("## Intro\n")
+        next_heading_start = content.index("## Next\n")
 
         chunks = chunk_document(
             document,
@@ -107,12 +110,20 @@ class ChunkingTests(unittest.TestCase):
         self.assertEqual(
             [(chunk.chunk_index, chunk.start_char, chunk.end_char, chunk.content) for chunk in chunks],
             [
-                (0, 0, 12, "# Intro\nabcd"),
-                (1, 10, next_heading_start, "cdefghij\n"),
-                (2, next_heading_start, len(content), "# Next\nok\n"),
+                (0, 0, intro_heading_start, "# Root\n"),
+                (1, intro_heading_start, 19, "## Intro\nabc"),
+                (2, 17, next_heading_start, "bcdefghij\n"),
+                (3, next_heading_start, len(content), "## Next\nok\n"),
             ],
         )
-        self.assertEqual([(chunk.heading_title, chunk.heading_level) for chunk in chunks], [("Intro", 1), ("Intro", 1), ("Next", 1)])
+        self.assertEqual(
+            [(chunk.heading_title, chunk.heading_level) for chunk in chunks],
+            [("Root", 1), ("Intro", 2), ("Intro", 2), ("Next", 2)],
+        )
+        self.assertEqual(
+            [chunk.heading_path for chunk in chunks],
+            [("Root",), ("Root", "Intro"), ("Root", "Intro"), ("Root", "Next")],
+        )
 
     def test_chunk_document_markdown_sections_falls_back_to_fixed_windows_without_headings(self) -> None:
         document = SourceDocument(
@@ -139,6 +150,7 @@ class ChunkingTests(unittest.TestCase):
             ],
         )
         self.assertEqual([(chunk.heading_title, chunk.heading_level) for chunk in chunks], [(None, None), (None, None), (None, None)])
+        self.assertEqual([chunk.heading_path for chunk in chunks], [None, None, None])
 
     def test_chunk_document_markdown_sections_falls_back_to_fixed_windows_for_text_files(self) -> None:
         document = SourceDocument(
@@ -165,6 +177,7 @@ class ChunkingTests(unittest.TestCase):
             ],
         )
         self.assertEqual([(chunk.heading_title, chunk.heading_level) for chunk in chunks], [(None, None), (None, None), (None, None)])
+        self.assertEqual([chunk.heading_path for chunk in chunks], [None, None, None])
 
     def test_chunk_document_fixed_windows_sets_nearest_markdown_heading_metadata(self) -> None:
         content = "# Intro\nabc\n## Next\ndef\n"
@@ -184,12 +197,12 @@ class ChunkingTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            [(chunk.start_char, chunk.end_char, chunk.heading_title, chunk.heading_level) for chunk in chunks],
+            [(chunk.start_char, chunk.end_char, chunk.heading_title, chunk.heading_level, chunk.heading_path) for chunk in chunks],
             [
-                (0, 6, "Intro", 1),
-                (6, 12, "Intro", 1),
-                (12, 18, "Next", 2),
-                (18, 24, "Next", 2),
+                (0, 6, "Intro", 1, ("Intro",)),
+                (6, 12, "Intro", 1, ("Intro",)),
+                (12, 18, "Next", 2, ("Intro", "Next")),
+                (18, 24, "Next", 2, ("Intro", "Next")),
             ],
         )
 

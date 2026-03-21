@@ -64,12 +64,22 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
         character_count INTEGER NOT NULL,
         heading_title TEXT,
         heading_level INTEGER,
+        heading_path TEXT,
         content TEXT NOT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (run_id, document_index, chunk_index)
     )
     """,
 )
+
+
+def _ensure_chunk_heading_path_column(connection: "duckdb.DuckDBPyConnection") -> None:
+    chunk_columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info('chunks')").fetchall()
+    }
+    if "heading_path" not in chunk_columns:
+        connection.execute("ALTER TABLE chunks ADD COLUMN heading_path TEXT")
 
 
 def open_database(db_path: str | Path) -> "duckdb.DuckDBPyConnection":
@@ -100,6 +110,7 @@ def initialize_schema(connection: "duckdb.DuckDBPyConnection") -> None:
     try:
         for statement in SCHEMA_STATEMENTS:
             connection.execute(statement)
+        _ensure_chunk_heading_path_column(connection)
     except Exception as exc:
         if duckdb is not None and isinstance(exc, duckdb.Error):
             raise StorageError("Could not initialize DuckDB schema") from exc

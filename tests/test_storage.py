@@ -6,7 +6,7 @@ from pathlib import Path
 import docemoria
 
 from docemoria.ingest import ingest_docset
-from docemoria.ingest_results import fetch_ingest_run_summary
+from docemoria.ingest_results import fetch_ingest_run_summary, fetch_recent_ingest_runs
 from docemoria.storage import StorageError, initialize_schema, open_database
 
 DUCKDB_AVAILABLE = importlib.util.find_spec("duckdb") is not None
@@ -30,6 +30,9 @@ class StorageApiSurfaceTests(unittest.TestCase):
             def fetchone(self) -> tuple[object, ...] | None:
                 return self._row
 
+            def fetchall(self) -> list[tuple[object, ...]]:
+                return [] if self._row is None else [self._row]
+
         class FakeConnection:
             def __init__(self, row: tuple[object, ...] | None) -> None:
                 self.row = row
@@ -50,6 +53,7 @@ class StorageApiSurfaceTests(unittest.TestCase):
                 5,
                 2,
                 5,
+                4,
                 None,
             )
         )
@@ -59,12 +63,16 @@ class StorageApiSurfaceTests(unittest.TestCase):
         self.assertEqual(summary.source_id, "sample")
         self.assertEqual(summary.persisted_document_count, 2)
         self.assertEqual(summary.persisted_chunk_count, 5)
-        self.assertEqual(connection.calls[0][1], [7])
+        self.assertEqual(summary.persisted_chunk_heading_path_count, 4)
+        self.assertEqual(connection.calls[0][1], [7, 1])
 
     def test_fetch_ingest_run_summary_raises_when_no_runs_exist(self) -> None:
         class FakeCursor:
             def fetchone(self) -> tuple[object, ...] | None:
                 return None
+
+            def fetchall(self) -> list[tuple[object, ...]]:
+                return []
 
         class FakeConnection:
             def __init__(self) -> None:
@@ -77,7 +85,72 @@ class StorageApiSurfaceTests(unittest.TestCase):
         connection = FakeConnection()
         with self.assertRaisesRegex(StorageError, "No ingest runs found in DuckDB"):
             fetch_ingest_run_summary(connection)  # type: ignore[arg-type]
-        self.assertIsNone(connection.calls[0][1])
+        self.assertEqual(connection.calls[0][1], [1])
+
+    def test_fetch_recent_ingest_runs_maps_rows_and_passes_limit(self) -> None:
+        class FakeCursor:
+            def __init__(self, rows: list[tuple[object, ...]]) -> None:
+                self._rows = rows
+
+            def fetchall(self) -> list[tuple[object, ...]]:
+                return self._rows
+
+        class FakeConnection:
+            def __init__(self, rows: list[tuple[object, ...]]) -> None:
+                self.rows = rows
+                self.calls: list[tuple[str, list[int] | None]] = []
+
+            def execute(self, query: str, params: list[int] | None = None) -> FakeCursor:
+                self.calls.append((query, params))
+                return FakeCursor(self.rows)
+
+        connection = FakeConnection(
+            [
+                (
+                    12,
+                    "sample-a",
+                    "success",
+                    "2026-03-20 15:58:03",
+                    "2026-03-20 15:58:06",
+                    4,
+                    9,
+                    4,
+                    9,
+                    8,
+                    None,
+                ),
+                (
+                    11,
+                    "sample-b",
+                    "failed",
+                    "2026-03-20 15:58:01",
+                    "2026-03-20 15:58:02",
+                    3,
+                    0,
+                    2,
+                    0,
+                    0,
+                    "boom",
+                ),
+            ]
+        )
+
+        summaries = fetch_recent_ingest_runs(connection, limit=2)  # type: ignore[arg-type]
+        self.assertEqual([summary.run_id for summary in summaries], [12, 11])
+        self.assertEqual(summaries[1].error_message, "boom")
+        self.assertEqual(connection.calls[0][1], [2])
+
+    def test_fetch_recent_ingest_runs_requires_positive_limit(self) -> None:
+        class FakeCursor:
+            def fetchall(self) -> list[tuple[object, ...]]:
+                return []
+
+        class FakeConnection:
+            def execute(self, query: str, params: list[int] | None = None) -> FakeCursor:
+                return FakeCursor()
+
+        with self.assertRaisesRegex(StorageError, "Limit must be greater than 0"):
+            fetch_recent_ingest_runs(FakeConnection(), limit=0)  # type: ignore[arg-type]
 
 
 @unittest.skipUnless(DUCKDB_AVAILABLE, "duckdb is required for storage tests")
@@ -160,6 +233,7 @@ class StorageBootstrapTests(unittest.TestCase):
                     "character_count",
                     "heading_title",
                     "heading_level",
+                    "heading_path",
                     "content",
                 }.issubset(chunk_columns)
             )
@@ -279,12 +353,13 @@ class StorageBootstrapTests(unittest.TestCase):
                     character_count,
                     heading_title,
                     heading_level,
+                    heading_path,
                     content
                 )
                 VALUES
-                    (2, 0, 0, 'beta', 'docs/a.md', 'markdown', 0, 5, 5, NULL, NULL, 'hello'),
-                    (2, 1, 0, 'beta', 'docs/b.md', 'markdown', 0, 5, 5, NULL, NULL, 'abcde'),
-                    (2, 1, 1, 'beta', 'docs/b.md', 'markdown', 0, 2, 2, NULL, NULL, 'ab')
+                    (2, 0, 0, 'beta', 'docs/a.md', 'markdown', 0, 5, 5, NULL, NULL, NULL, 'hello'),
+                    (2, 1, 0, 'beta', 'docs/b.md', 'markdown', 0, 5, 5, NULL, NULL, '["Intro"]', 'abcde'),
+                    (2, 1, 1, 'beta', 'docs/b.md', 'markdown', 0, 2, 2, NULL, NULL, '["Intro","Details"]', 'ab')
                 """
             )
 
@@ -295,6 +370,7 @@ class StorageBootstrapTests(unittest.TestCase):
             self.assertEqual(summary.chunk_count, 4)
             self.assertEqual(summary.persisted_document_count, 2)
             self.assertEqual(summary.persisted_chunk_count, 3)
+            self.assertEqual(summary.persisted_chunk_heading_path_count, 2)
             self.assertEqual(summary.status, "success")
 
     def test_fetch_ingest_run_summary_raises_for_missing_run_id(self) -> None:
@@ -306,6 +382,73 @@ class StorageBootstrapTests(unittest.TestCase):
 
             with self.assertRaisesRegex(StorageError, "Ingest run not found: 999"):
                 fetch_ingest_run_summary(connection, run_id=999)
+
+    def test_fetch_recent_ingest_runs_returns_recent_runs_with_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "docemoria.duckdb"
+            connection = open_database(db_path)
+            self.addCleanup(connection.close)
+            initialize_schema(connection)
+
+            connection.execute(
+                """
+                INSERT INTO ingest_runs (run_id, source_id, status, document_count, chunk_count, finished_at)
+                VALUES
+                    (1, 'alpha', 'success', 1, 1, CURRENT_TIMESTAMP),
+                    (2, 'beta', 'failed', 3, 4, CURRENT_TIMESTAMP),
+                    (3, 'gamma', 'success', 8, 10, CURRENT_TIMESTAMP)
+                """
+            )
+
+            connection.execute(
+                """
+                INSERT INTO documents (
+                    run_id,
+                    document_index,
+                    source_id,
+                    repo_relative_path,
+                    absolute_path,
+                    file_type,
+                    character_count,
+                    content
+                )
+                VALUES
+                    (3, 0, 'gamma', 'docs/c.md', '/tmp/c.md', 'markdown', 12, 'hello gamma'),
+                    (3, 1, 'gamma', 'docs/d.md', '/tmp/d.md', 'markdown', 9, 'more gamma'),
+                    (2, 0, 'beta', 'docs/b.md', '/tmp/b.md', 'markdown', 5, 'hello')
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO chunks (
+                    run_id,
+                    document_index,
+                    chunk_index,
+                    source_id,
+                    repo_relative_path,
+                    file_type,
+                    start_char,
+                    end_char,
+                    character_count,
+                    heading_title,
+                    heading_level,
+                    heading_path,
+                    content
+                )
+                VALUES
+                    (3, 0, 0, 'gamma', 'docs/c.md', 'markdown', 0, 5, 5, NULL, NULL, '["Intro"]', 'hello'),
+                    (3, 0, 1, 'gamma', 'docs/c.md', 'markdown', 5, 10, 5, NULL, NULL, NULL, ' gamma'),
+                    (2, 0, 0, 'beta', 'docs/b.md', 'markdown', 0, 5, 5, NULL, NULL, NULL, 'hello')
+                """
+            )
+
+            summaries = fetch_recent_ingest_runs(connection, limit=2)
+            self.assertEqual([summary.run_id for summary in summaries], [3, 2])
+            self.assertEqual(summaries[0].source_id, "gamma")
+            self.assertEqual(summaries[0].persisted_document_count, 2)
+            self.assertEqual(summaries[0].persisted_chunk_count, 2)
+            self.assertEqual(summaries[0].persisted_chunk_heading_path_count, 1)
+            self.assertEqual(summaries[1].source_id, "beta")
 
 
 if __name__ == "__main__":
