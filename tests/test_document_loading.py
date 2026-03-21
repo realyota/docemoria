@@ -29,20 +29,23 @@ class DocumentLoadingTests(unittest.TestCase):
             self.assertEqual(documents[0].source_id, "sample")
             self.assertEqual(documents[0].absolute_path, (repo / "docs" / "intro.md").resolve())
             self.assertEqual(documents[0].file_type, "markdown")
+            self.assertEqual(documents[0].document_title, "Intro")
             self.assertEqual(documents[0].content, "# Intro\n")
             self.assertEqual(documents[1].file_type, "text")
+            self.assertEqual(documents[1].document_title, "Remember this.")
 
     def test_load_documents_accepts_explicit_paths_with_repo_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             repo = Path(tmp_dir)
             doc_path = repo / "docs" / "intro.md"
             doc_path.parent.mkdir(parents=True)
-            doc_path.write_text("Hello\n", encoding="utf-8")
+            doc_path.write_text("# Hello\nBody\n", encoding="utf-8")
 
             documents = load_documents([doc_path], source_id="sample", repo_root=repo)
 
             self.assertEqual(len(documents), 1)
             self.assertEqual(documents[0].repo_relative_path, "docs/intro.md")
+            self.assertEqual(documents[0].document_title, "Hello")
 
     def test_load_documents_rejects_unsupported_file_types(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -67,6 +70,16 @@ class DocumentLoadingTests(unittest.TestCase):
                 load_documents([bad_path], source_id="sample", repo_root=repo)
 
             self.assertIn("not valid UTF-8 text", str(context.exception))
+
+    def test_load_documents_uses_first_non_empty_text_line_as_title(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo = Path(tmp_dir)
+            doc_path = repo / "notes.txt"
+            doc_path.write_text("\n\nRemember this first\nThen this\n", encoding="utf-8")
+
+            documents = load_documents([doc_path], source_id="sample", repo_root=repo)
+
+            self.assertEqual(documents[0].document_title, "Remember this first")
 
 
 if __name__ == "__main__":

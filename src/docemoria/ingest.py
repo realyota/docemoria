@@ -57,6 +57,7 @@ def _insert_documents(
             document.repo_relative_path,
             str(document.absolute_path),
             document.file_type,
+            document.document_title,
             document.character_count,
             document.content,
         )
@@ -74,10 +75,11 @@ def _insert_documents(
             repo_relative_path,
             absolute_path,
             file_type,
+            document_title,
             character_count,
             content
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rows,
     )

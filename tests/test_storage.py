@@ -219,6 +219,7 @@ class StorageBootstrapTests(unittest.TestCase):
                     "source_id",
                     "repo_relative_path",
                     "file_type",
+                    "document_title",
                     "character_count",
                     "content",
                 }.issubset(document_columns)
@@ -297,6 +298,12 @@ class StorageBootstrapTests(unittest.TestCase):
             self.assertEqual(source_row[1], "Sample docs")
             self.assertEqual(source_row[2], str(repo.resolve()))
 
+            document_title_row = connection.execute(
+                "SELECT document_title FROM documents WHERE run_id = ? AND document_index = 0",
+                [result.run_id],
+            ).fetchone()
+            self.assertEqual(document_title_row[0], "Intro")
+
             document_count = connection.execute("SELECT COUNT(*) FROM documents WHERE run_id = ?", [result.run_id]).fetchone()[0]
             chunk_count = connection.execute("SELECT COUNT(*) FROM chunks WHERE run_id = ?", [result.run_id]).fetchone()[0]
             self.assertEqual(document_count, result.document_count)
@@ -331,12 +338,13 @@ class StorageBootstrapTests(unittest.TestCase):
                     repo_relative_path,
                     absolute_path,
                     file_type,
+                    document_title,
                     character_count,
                     content
                 )
                 VALUES
-                    (2, 0, 'beta', 'docs/a.md', '/tmp/a.md', 'markdown', 11, 'hello world'),
-                    (2, 1, 'beta', 'docs/b.md', '/tmp/b.md', 'markdown', 5, 'abcde')
+                    (2, 0, 'beta', 'docs/a.md', '/tmp/a.md', 'markdown', 'Doc A', 11, 'hello world'),
+                    (2, 1, 'beta', 'docs/b.md', '/tmp/b.md', 'markdown', 'Doc B', 5, 'abcde')
                 """
             )
             connection.execute(

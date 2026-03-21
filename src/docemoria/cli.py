@@ -109,6 +109,7 @@ def _document_preview_payload(document: SourceDocument, *, include_content: bool
         "absolute_path": str(document.absolute_path),
         "repo_relative_path": document.repo_relative_path,
         "file_type": document.file_type,
+        "document_title": document.document_title,
         "character_count": document.character_count,
     }
     if include_content:

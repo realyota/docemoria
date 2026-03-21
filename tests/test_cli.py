@@ -79,6 +79,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(payload["document_count"], 2)
             self.assertEqual(payload["documents"][0]["repo_relative_path"], "docs/intro.md")
             self.assertEqual(payload["documents"][0]["file_type"], "markdown")
+            self.assertEqual(payload["documents"][0]["document_title"], "Intro")
             self.assertEqual(payload["documents"][0]["character_count"], len("# Intro\nBody\n"))
             self.assertNotIn("content", payload["documents"][0])
 
@@ -106,6 +107,7 @@ class CliTests(unittest.TestCase):
 
             payload = json.loads(stdout.getvalue())
             self.assertEqual(exit_code, 0)
+            self.assertEqual(payload["documents"][0]["document_title"], "Intro")
             self.assertEqual(payload["documents"][0]["content"], "# Intro\n")
 
     def test_preview_chunks_prints_chunked_document_json(self) -> None:
