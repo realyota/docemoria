@@ -6,6 +6,7 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
+from .chunk_search import ChunkSearchResult, search_persisted_chunks
 from .chunking import ChunkingError, DocumentChunk, chunk_documents
 from .config import ConfigError, load_docset_config, load_docset_configs
 from .discovery import DiscoveryError, discover_docset_files, resolve_docset_repo_path
@@ -100,6 +101,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum number of recent runs to include (default: 10)",
     )
 
+    search_chunks_parser = subparsers.add_parser(
+        "search-chunks",
+        help="Search persisted chunk content in DuckDB with optional source/run filters",
+    )
+    search_chunks_parser.add_argument("query", help="Substring query to search for in chunk content")
+    search_chunks_parser.add_argument(
+        "--db-path",
+        default=DEFAULT_DB_PATH,
+        help=f"Path to DuckDB database file (default: {DEFAULT_DB_PATH})",
+    )
+    search_chunks_parser.add_argument(
+        "--source-id",
+        help="Optional source_id filter to restrict matching chunks",
+    )
+    search_chunks_parser.add_argument(
+        "--run-id",
+        type=int,
+        help="Optional ingest run_id filter to restrict matching chunks",
+    )
+    search_chunks_parser.add_argument(
+        "--limit",
+        type=int,
+        default=5,
+        help="Maximum number of matching chunks to include (default: 5)",
+    )
+
     return parser
 
 
@@ -133,6 +160,21 @@ def _chunk_preview_payload(chunk: DocumentChunk) -> dict[str, object]:
         "heading_level": chunk.heading_level,
         "heading_path": None if chunk.heading_path is None else list(chunk.heading_path),
         "content": chunk.content,
+    }
+
+
+def _chunk_search_payload(result: ChunkSearchResult) -> dict[str, object]:
+    return {
+        "run_id": result.run_id,
+        "source_id": result.source_id,
+        "document_index": result.document_index,
+        "chunk_index": result.chunk_index,
+        "repo_relative_path": result.repo_relative_path,
+        "document_title": result.document_title,
+        "heading_title": result.heading_title,
+        "heading_path": None if result.heading_path is None else list(result.heading_path),
+        "character_count": result.character_count,
+        "content": result.content,
     }
 
 
@@ -232,6 +274,29 @@ def main() -> int:
                 initialize_schema(connection)
                 summaries = fetch_recent_ingest_runs(connection, limit=args.limit)
             print(json.dumps([asdict(summary) for summary in summaries], separators=(",", ":")))
+            return 0
+
+        if args.command == "search-chunks":
+            with open_database(Path(args.db_path)) as connection:
+                initialize_schema(connection)
+                matches = search_persisted_chunks(
+                    connection,
+                    query=args.query,
+                    source_id=args.source_id,
+                    run_id=args.run_id,
+                    limit=args.limit,
+                )
+            payload = {
+                "query": args.query,
+                "filters": {
+                    "source_id": args.source_id,
+                    "run_id": args.run_id,
+                    "limit": args.limit,
+                },
+                "match_count": len(matches),
+                "matches": [_chunk_search_payload(match) for match in matches],
+            }
+            print(json.dumps(payload, separators=(",", ":")))
             return 0
 
         parser.error(f"Unsupported command: {args.command}")
