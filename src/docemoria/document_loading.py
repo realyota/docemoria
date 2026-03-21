@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 from typing import Iterable
 
+from .checksums import stable_content_checksum
 from .config import DocsetConfig
 from .discovery import discover_docset_files, resolve_docset_repo_path
 
@@ -28,6 +29,10 @@ class SourceDocument:
     @property
     def character_count(self) -> int:
         return len(self.content)
+
+    @property
+    def content_checksum(self) -> str:
+        return stable_content_checksum(self.content)
 
 
 def _detect_file_type(path: Path) -> str:

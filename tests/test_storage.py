@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import tempfile
 import unittest
@@ -5,7 +6,9 @@ from pathlib import Path
 
 import docemoria
 
-from docemoria.ingest import ingest_docset
+from docemoria.chunking import DocumentChunk
+from docemoria.document_loading import SourceDocument
+from docemoria.ingest import _insert_chunks, _insert_documents, ingest_docset
 from docemoria.ingest_results import fetch_ingest_run_summary, fetch_recent_ingest_runs
 from docemoria.storage import StorageError, initialize_schema, open_database
 
@@ -152,6 +155,63 @@ class StorageApiSurfaceTests(unittest.TestCase):
         with self.assertRaisesRegex(StorageError, "Limit must be greater than 0"):
             fetch_recent_ingest_runs(FakeConnection(), limit=0)  # type: ignore[arg-type]
 
+    def test_insert_documents_persists_content_checksum_value(self) -> None:
+        class FakeConnection:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, list[tuple[object, ...]]]] = []
+
+            def executemany(self, query: str, rows: list[tuple[object, ...]]) -> None:
+                self.calls.append((query, rows))
+
+        document = SourceDocument(
+            source_id="sample",
+            absolute_path=Path("/tmp/a.md"),
+            repo_relative_path="docs/a.md",
+            content="hello world",
+            file_type="markdown",
+            document_title="Doc A",
+        )
+        connection = FakeConnection()
+
+        _insert_documents(connection, run_id=11, documents=[document])  # type: ignore[arg-type]
+
+        self.assertEqual(len(connection.calls), 1)
+        query, rows = connection.calls[0]
+        self.assertIn("content_checksum", query)
+        self.assertEqual(rows[0][-1], hashlib.sha256(document.content.encode("utf-8")).hexdigest())
+
+    def test_insert_chunks_persists_content_checksum_value(self) -> None:
+        class FakeConnection:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, list[tuple[object, ...]]]] = []
+
+            def executemany(self, query: str, rows: list[tuple[object, ...]]) -> None:
+                self.calls.append((query, rows))
+
+        chunk = DocumentChunk(
+            source_id="sample",
+            absolute_path=Path("/tmp/a.md"),
+            repo_relative_path="docs/a.md",
+            file_type="markdown",
+            document_index=0,
+            chunk_index=0,
+            start_char=0,
+            end_char=5,
+            content="hello",
+            document_title="Doc A",
+            heading_title="Intro",
+            heading_level=1,
+            heading_path=("Intro",),
+        )
+        connection = FakeConnection()
+
+        _insert_chunks(connection, run_id=11, chunks=[chunk])  # type: ignore[arg-type]
+
+        self.assertEqual(len(connection.calls), 1)
+        query, rows = connection.calls[0]
+        self.assertIn("content_checksum", query)
+        self.assertEqual(rows[0][-1], hashlib.sha256(chunk.content.encode("utf-8")).hexdigest())
+
 
 @unittest.skipUnless(DUCKDB_AVAILABLE, "duckdb is required for storage tests")
 class StorageBootstrapTests(unittest.TestCase):
@@ -222,6 +282,7 @@ class StorageBootstrapTests(unittest.TestCase):
                     "document_title",
                     "character_count",
                     "content",
+                    "content_checksum",
                 }.issubset(document_columns)
             )
             self.assertTrue(
@@ -237,6 +298,7 @@ class StorageBootstrapTests(unittest.TestCase):
                     "heading_level",
                     "heading_path",
                     "content",
+                    "content_checksum",
                 }.issubset(chunk_columns)
             )
 
@@ -275,6 +337,38 @@ class StorageBootstrapTests(unittest.TestCase):
                 for row in connection.execute("PRAGMA table_info('chunks')").fetchall()
             }
             self.assertIn("document_title", chunk_columns)
+            self.assertIn("content_checksum", chunk_columns)
+
+    def test_initialize_schema_adds_content_checksum_column_to_existing_documents_table(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "docemoria.duckdb"
+            connection = open_database(db_path)
+            self.addCleanup(connection.close)
+
+            connection.execute(
+                """
+                CREATE TABLE documents (
+                    run_id BIGINT NOT NULL,
+                    document_index INTEGER NOT NULL,
+                    source_id TEXT NOT NULL,
+                    repo_relative_path TEXT NOT NULL,
+                    absolute_path TEXT NOT NULL,
+                    file_type TEXT NOT NULL,
+                    character_count INTEGER NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (run_id, document_index)
+                )
+                """
+            )
+
+            initialize_schema(connection)
+
+            document_columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info('documents')").fetchall()
+            }
+            self.assertIn("content_checksum", document_columns)
 
     def test_ingest_docset_persists_rows_in_core_tables(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -350,6 +444,30 @@ class StorageBootstrapTests(unittest.TestCase):
                 [result.run_id],
             ).fetchone()
             self.assertEqual(chunk_document_title_row[0], "Intro")
+
+            document_checksums = connection.execute(
+                "SELECT content, content_checksum FROM documents WHERE run_id = ?",
+                [result.run_id],
+            ).fetchall()
+            self.assertTrue(document_checksums)
+            self.assertTrue(
+                all(
+                    checksum == hashlib.sha256(content.encode("utf-8")).hexdigest()
+                    for content, checksum in document_checksums
+                )
+            )
+
+            chunk_checksums = connection.execute(
+                "SELECT content, content_checksum FROM chunks WHERE run_id = ?",
+                [result.run_id],
+            ).fetchall()
+            self.assertTrue(chunk_checksums)
+            self.assertTrue(
+                all(
+                    checksum == hashlib.sha256(content.encode("utf-8")).hexdigest()
+                    for content, checksum in chunk_checksums
+                )
+            )
 
             document_count = connection.execute("SELECT COUNT(*) FROM documents WHERE run_id = ?", [result.run_id]).fetchone()[0]
             chunk_count = connection.execute("SELECT COUNT(*) FROM chunks WHERE run_id = ?", [result.run_id]).fetchone()[0]

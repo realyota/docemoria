@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 import unittest
 
@@ -237,6 +238,22 @@ class ChunkingTests(unittest.TestCase):
             chunk_document(document, strategy="unknown", max_chars=3, overlap_chars=1)
 
         self.assertIn("Unsupported chunking.strategy", str(context.exception))
+
+    def test_chunk_content_checksum_is_stable_sha256(self) -> None:
+        document = SourceDocument(
+            source_id="sample",
+            absolute_path=Path("/tmp/sample.md"),
+            repo_relative_path="docs/sample.md",
+            content="abcdef",
+            file_type="markdown",
+        )
+
+        chunks = chunk_document(document, max_chars=3, overlap_chars=0)
+
+        self.assertEqual(
+            [chunk.content_checksum for chunk in chunks],
+            [hashlib.sha256(chunk.content.encode("utf-8")).hexdigest() for chunk in chunks],
+        )
 
 
 if __name__ == "__main__":

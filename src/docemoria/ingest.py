@@ -60,6 +60,7 @@ def _insert_documents(
             document.document_title,
             document.character_count,
             document.content,
+            document.content_checksum,
         )
         for index, document in enumerate(documents)
     ]
@@ -77,9 +78,10 @@ def _insert_documents(
             file_type,
             document_title,
             character_count,
-            content
+            content,
+            content_checksum
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rows,
     )
@@ -107,6 +109,7 @@ def _insert_chunks(
             chunk.heading_level,
             _serialize_heading_path(chunk.heading_path),
             chunk.content,
+            chunk.content_checksum,
         )
         for chunk in chunks
     ]
@@ -129,9 +132,10 @@ def _insert_chunks(
             heading_title,
             heading_level,
             heading_path,
-            content
+            content,
+            content_checksum
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         rows,
     )

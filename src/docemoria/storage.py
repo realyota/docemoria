@@ -48,6 +48,7 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
         document_title TEXT,
         character_count INTEGER NOT NULL,
         content TEXT NOT NULL,
+        content_checksum TEXT,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (run_id, document_index)
     )
@@ -68,6 +69,7 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
         heading_level INTEGER,
         heading_path TEXT,
         content TEXT NOT NULL,
+        content_checksum TEXT,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (run_id, document_index, chunk_index)
     )
@@ -102,6 +104,24 @@ def _ensure_document_title_column(connection: "duckdb.DuckDBPyConnection") -> No
         connection.execute("ALTER TABLE documents ADD COLUMN document_title TEXT")
 
 
+def _ensure_document_content_checksum_column(connection: "duckdb.DuckDBPyConnection") -> None:
+    document_columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info('documents')").fetchall()
+    }
+    if "content_checksum" not in document_columns:
+        connection.execute("ALTER TABLE documents ADD COLUMN content_checksum TEXT")
+
+
+def _ensure_chunk_content_checksum_column(connection: "duckdb.DuckDBPyConnection") -> None:
+    chunk_columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info('chunks')").fetchall()
+    }
+    if "content_checksum" not in chunk_columns:
+        connection.execute("ALTER TABLE chunks ADD COLUMN content_checksum TEXT")
+
+
 def open_database(db_path: str | Path) -> "duckdb.DuckDBPyConnection":
     """Open a DuckDB connection for the provided database path."""
     if duckdb is None:
@@ -132,7 +152,9 @@ def initialize_schema(connection: "duckdb.DuckDBPyConnection") -> None:
             connection.execute(statement)
         _ensure_chunk_document_title_column(connection)
         _ensure_chunk_heading_path_column(connection)
+        _ensure_chunk_content_checksum_column(connection)
         _ensure_document_title_column(connection)
+        _ensure_document_content_checksum_column(connection)
     except Exception as exc:
         if duckdb is not None and isinstance(exc, duckdb.Error):
             raise StorageError("Could not initialize DuckDB schema") from exc

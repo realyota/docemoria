@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from .checksums import stable_content_checksum
 from .document_loading import SourceDocument
 
 
@@ -31,6 +32,10 @@ class DocumentChunk:
     @property
     def character_count(self) -> int:
         return len(self.content)
+
+    @property
+    def content_checksum(self) -> str:
+        return stable_content_checksum(self.content)
 
 
 SUPPORTED_CHUNKING_STRATEGIES = {"fixed-windows", "markdown-sections"}

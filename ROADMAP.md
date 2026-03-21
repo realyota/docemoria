@@ -15,6 +15,7 @@ Zaimplementowane w kodzie:
 - minimalny bootstrap storage na DuckDB:
   - otwieranie bazy
   - inicjalizacja schematu `ingest_runs` / `sources` / `documents` / `chunks`
+- stabilne checksumy treści dla dokumentów i chunków, persystowane w DuckDB pod przyszłe śledzenie zmian / incremental ingest
 - CLI:
   - `list-docsets`
   - `show-docset`

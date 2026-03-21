@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 import tempfile
 import unittest
@@ -80,6 +81,20 @@ class DocumentLoadingTests(unittest.TestCase):
             documents = load_documents([doc_path], source_id="sample", repo_root=repo)
 
             self.assertEqual(documents[0].document_title, "Remember this first")
+
+    def test_load_documents_sets_stable_content_checksum(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo = Path(tmp_dir)
+            doc_path = repo / "notes.txt"
+            content = "Remember this first\n"
+            doc_path.write_text(content, encoding="utf-8")
+
+            documents = load_documents([doc_path], source_id="sample", repo_root=repo)
+
+            self.assertEqual(
+                documents[0].content_checksum,
+                hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            )
 
 
 if __name__ == "__main__":
