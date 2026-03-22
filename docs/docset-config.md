@@ -220,3 +220,15 @@ The command:
 - finds matching persisted chunks by substring query,
 - groups hits by section metadata (`heading_path`, fallback to `heading_title`) within `(run_id, source_id, document_index)`,
 - returns full section chunk context for each matched section with `match_chunk_indexes` and per-chunk `is_match` flags.
+
+Retrieve section-grouped context using docset retrieval defaults:
+
+```bash
+PYTHONPATH=src python3 -m docemoria.cli retrieve-context configs/docsets/example.yaml "rate limit" --db-path data/docemoria.duckdb
+```
+
+The command:
+- loads the docset config,
+- uses the docset `source_id` as the persisted chunk filter,
+- uses `retrieval.top_k` as the section-match limit,
+- returns section-grouped chunk context with `match_chunk_indexes` and per-chunk `is_match` flags.

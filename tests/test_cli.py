@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from docemoria import cli
 from docemoria.chunk_search import ChunkContextChunk, ChunkContextResult, ChunkSearchResult, ChunkSectionResult
+from docemoria.config import DocsetConfig, RetrievalConfig
 from docemoria.ingest import IngestResult
 from docemoria.ingest_results import IngestRunSummary
 
@@ -707,6 +708,98 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["groups"][0]["chunks"][1]["is_match"])
         self.assertEqual(payload["groups"][0]["chunks"][2]["chunk_index"], 2)
         self.assertTrue(payload["groups"][0]["chunks"][2]["is_match"])
+
+    def test_retrieve_context_loads_docset_defaults_and_returns_section_groups(self) -> None:
+        stdout = io.StringIO()
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+        config_path = Path("configs/docsets/sample.yaml")
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "retrieve-context",
+                str(config_path),
+                "needle",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+                "--run-id",
+                "7",
+            ],
+        ), patch(
+            "docemoria.cli.load_docset_config",
+            return_value=DocsetConfig(
+                source_id="sample",
+                label="Sample Docs",
+                repo_path="../../repos/sample-docs",
+                retrieval=RetrievalConfig(top_k=9, rerank=True),
+                config_path=str(config_path),
+            ),
+        ) as load_docset_config_mock, patch(
+            "docemoria.cli.open_database",
+            return_value=connection,
+        ) as open_database_mock, patch(
+            "docemoria.cli.initialize_schema",
+        ) as initialize_schema_mock, patch(
+            "docemoria.cli.search_persisted_chunk_sections",
+            return_value=[
+                ChunkSectionResult(
+                    run_id=7,
+                    source_id="sample",
+                    document_index=0,
+                    repo_relative_path="docs/intro.md",
+                    document_title="Intro",
+                    heading_title="Details",
+                    heading_path=["Intro", "Details"],
+                    match_chunk_indexes=[1],
+                    chunks=[
+                        ChunkContextChunk(
+                            run_id=7,
+                            source_id="sample",
+                            document_index=0,
+                            chunk_index=1,
+                            repo_relative_path="docs/intro.md",
+                            document_title="Intro",
+                            heading_title="Details",
+                            heading_path=["Intro", "Details"],
+                            character_count=35,
+                            content="Needle content",
+                            is_match=True,
+                        ),
+                    ],
+                )
+            ],
+        ) as search_sections_mock:
+            exit_code = cli.main()
+
+        rendered = stdout.getvalue().strip()
+        payload = json.loads(rendered)
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("\n", rendered)
+        load_docset_config_mock.assert_called_once_with(config_path)
+        open_database_mock.assert_called_once_with(Path("./tmp/docemoria.duckdb"))
+        initialize_schema_mock.assert_called_once_with(connection)
+        search_sections_mock.assert_called_once_with(
+            connection,
+            query="needle",
+            source_id="sample",
+            run_id=7,
+            limit=9,
+        )
+        self.assertEqual(payload["query"], "needle")
+        self.assertEqual(
+            payload["docset"],
+            {
+                "config_path": str(config_path),
+                "source_id": "sample",
+                "label": "Sample Docs",
+            },
+        )
+        self.assertEqual(payload["filters"], {"source_id": "sample", "run_id": 7, "limit": 9})
+        self.assertEqual(payload["group_count"], 1)
+        self.assertEqual(payload["groups"][0]["heading_path"], ["Intro", "Details"])
 
 
 if __name__ == "__main__":
