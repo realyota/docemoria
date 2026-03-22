@@ -178,7 +178,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     search_sections_parser = subparsers.add_parser(
         "search-sections",
-        help="Search persisted chunks and group matching chunks by section metadata",
+        help=(
+            "Search persisted chunks, group by section metadata, and return full section chunk "
+            "context with match flags"
+        ),
     )
     search_sections_parser.add_argument("query", help="Substring query to search for in chunk content")
     search_sections_parser.add_argument(
@@ -293,7 +296,7 @@ def _chunk_section_payload(result: ChunkSectionResult) -> dict[str, object]:
         "heading_path": None if result.heading_path is None else list(result.heading_path),
         "match_chunk_indexes": list(result.match_chunk_indexes),
         "chunk_count": len(result.chunks),
-        "chunks": [_chunk_search_payload(chunk) for chunk in result.chunks],
+        "chunks": [_chunk_context_chunk_payload(chunk) for chunk in result.chunks],
     }
 
 

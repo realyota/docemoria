@@ -56,7 +56,7 @@ class ChunkSectionResult:
     heading_title: str | None
     heading_path: list[str] | None
     match_chunk_indexes: list[int]
-    chunks: list[ChunkSearchResult]
+    chunks: list[ChunkContextChunk]
 
 
 def _parse_heading_path(value: object) -> list[str] | None:
@@ -196,10 +196,46 @@ def search_persisted_chunk_sections(
         grouped_matches[key].append(match)
 
     grouped_sections: list[ChunkSectionResult] = []
+    document_chunk_cache: dict[tuple[int, str, int], list[ChunkSearchResult]] = {}
+
     for key in ordered_keys:
         section_matches = grouped_matches[key]
         first_match = section_matches[0]
         match_chunk_indexes = sorted({match.chunk_index for match in section_matches})
+        match_chunk_index_set = set(match_chunk_indexes)
+        document_key = (first_match.run_id, first_match.source_id, first_match.document_index)
+
+        document_chunks = document_chunk_cache.get(document_key)
+        if document_chunks is None:
+            document_chunks = _fetch_document_chunks(
+                connection,
+                run_id=first_match.run_id,
+                source_id=first_match.source_id,
+                document_index=first_match.document_index,
+            )
+            document_chunk_cache[document_key] = document_chunks
+
+        section_heading_key = key[3]
+        section_chunks: list[ChunkContextChunk] = []
+        for chunk in document_chunks:
+            if _heading_group_key(chunk) != section_heading_key:
+                continue
+            section_chunks.append(
+                ChunkContextChunk(
+                    run_id=chunk.run_id,
+                    source_id=chunk.source_id,
+                    document_index=chunk.document_index,
+                    chunk_index=chunk.chunk_index,
+                    repo_relative_path=chunk.repo_relative_path,
+                    document_title=chunk.document_title,
+                    heading_title=chunk.heading_title,
+                    heading_path=None if chunk.heading_path is None else list(chunk.heading_path),
+                    character_count=chunk.character_count,
+                    content=chunk.content,
+                    is_match=chunk.chunk_index in match_chunk_index_set,
+                )
+            )
+
         grouped_sections.append(
             ChunkSectionResult(
                 run_id=first_match.run_id,
@@ -210,7 +246,7 @@ def search_persisted_chunk_sections(
                 heading_title=first_match.heading_title,
                 heading_path=None if first_match.heading_path is None else list(first_match.heading_path),
                 match_chunk_indexes=match_chunk_indexes,
-                chunks=list(section_matches),
+                chunks=section_chunks,
             )
         )
 

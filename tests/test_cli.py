@@ -637,7 +637,20 @@ class CliTests(unittest.TestCase):
                     heading_path=["Intro", "Details"],
                     match_chunk_indexes=[1, 2],
                     chunks=[
-                        ChunkSearchResult(
+                        ChunkContextChunk(
+                            run_id=7,
+                            source_id="sample",
+                            document_index=0,
+                            chunk_index=0,
+                            repo_relative_path="docs/intro.md",
+                            document_title="Intro",
+                            heading_title="Details",
+                            heading_path=["Intro", "Details"],
+                            character_count=25,
+                            content="Section context",
+                            is_match=False,
+                        ),
+                        ChunkContextChunk(
                             run_id=7,
                             source_id="sample",
                             document_index=0,
@@ -648,8 +661,9 @@ class CliTests(unittest.TestCase):
                             heading_path=["Intro", "Details"],
                             character_count=35,
                             content="Needle content a",
+                            is_match=True,
                         ),
-                        ChunkSearchResult(
+                        ChunkContextChunk(
                             run_id=7,
                             source_id="sample",
                             document_index=0,
@@ -660,6 +674,7 @@ class CliTests(unittest.TestCase):
                             heading_path=["Intro", "Details"],
                             character_count=30,
                             content="Needle content b",
+                            is_match=True,
                         ),
                     ],
                 )
@@ -685,9 +700,13 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["group_count"], 1)
         self.assertEqual(payload["groups"][0]["heading_path"], ["Intro", "Details"])
         self.assertEqual(payload["groups"][0]["match_chunk_indexes"], [1, 2])
-        self.assertEqual(payload["groups"][0]["chunk_count"], 2)
-        self.assertEqual(payload["groups"][0]["chunks"][0]["chunk_index"], 1)
-        self.assertEqual(payload["groups"][0]["chunks"][1]["chunk_index"], 2)
+        self.assertEqual(payload["groups"][0]["chunk_count"], 3)
+        self.assertEqual(payload["groups"][0]["chunks"][0]["chunk_index"], 0)
+        self.assertFalse(payload["groups"][0]["chunks"][0]["is_match"])
+        self.assertEqual(payload["groups"][0]["chunks"][1]["chunk_index"], 1)
+        self.assertTrue(payload["groups"][0]["chunks"][1]["is_match"])
+        self.assertEqual(payload["groups"][0]["chunks"][2]["chunk_index"], 2)
+        self.assertTrue(payload["groups"][0]["chunks"][2]["is_match"])
 
 
 if __name__ == "__main__":

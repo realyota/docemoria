@@ -219,4 +219,4 @@ PYTHONPATH=src python3 -m docemoria.cli search-sections "rate limit" --db-path d
 The command:
 - finds matching persisted chunks by substring query,
 - groups hits by section metadata (`heading_path`, fallback to `heading_title`) within `(run_id, source_id, document_index)`,
-- returns grouped matches with `match_chunk_indexes` and full matching chunk payloads.
+- returns full section chunk context for each matched section with `match_chunk_indexes` and per-chunk `is_match` flags.
