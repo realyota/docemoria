@@ -198,3 +198,14 @@ The command prints compact JSON list items with:
 - `persisted_chunk_count`
 - `persisted_chunk_heading_path_count`
 - `error_message`
+
+Inspect grouped chunk context for Q&A/review workflows:
+
+```bash
+PYTHONPATH=src python3 -m docemoria.cli search-context "rate limit" --db-path data/docemoria.duckdb --limit 5 --before 1 --after 1
+```
+
+The command:
+- finds matching persisted chunks by substring query,
+- groups hits by `(run_id, source_id, document_index)`,
+- expands each hit with sibling chunks before/after from the same document.

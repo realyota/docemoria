@@ -20,6 +20,32 @@ class ChunkSearchResult:
     content: str
 
 
+@dataclass(slots=True)
+class ChunkContextChunk:
+    run_id: int
+    source_id: str
+    document_index: int
+    chunk_index: int
+    repo_relative_path: str
+    document_title: str | None
+    heading_title: str | None
+    heading_path: list[str] | None
+    character_count: int
+    content: str
+    is_match: bool
+
+
+@dataclass(slots=True)
+class ChunkContextResult:
+    run_id: int
+    source_id: str
+    document_index: int
+    repo_relative_path: str
+    document_title: str | None
+    match_chunk_indexes: list[int]
+    chunks: list[ChunkContextChunk]
+
+
 def _parse_heading_path(value: object) -> list[str] | None:
     if value is None:
         return None
@@ -115,3 +141,130 @@ def search_persisted_chunks(
         raise StorageError("Could not search persisted chunks in DuckDB") from exc
 
     return [_map_chunk_search_result_row(row) for row in rows]
+
+
+def _fetch_document_chunks(
+    connection: "duckdb.DuckDBPyConnection",
+    *,
+    run_id: int,
+    source_id: str,
+    document_index: int,
+) -> list[ChunkSearchResult]:
+    try:
+        rows = connection.execute(
+            """
+            SELECT
+                run_id,
+                source_id,
+                document_index,
+                chunk_index,
+                repo_relative_path,
+                document_title,
+                heading_title,
+                heading_path,
+                character_count,
+                content
+            FROM chunks
+            WHERE run_id = ?
+              AND source_id = ?
+              AND document_index = ?
+            ORDER BY chunk_index ASC
+            """,
+            [run_id, source_id, document_index],
+        ).fetchall()
+    except StorageError:
+        raise
+    except Exception as exc:
+        raise StorageError("Could not load document chunks for context expansion") from exc
+
+    return [_map_chunk_search_result_row(row) for row in rows]
+
+
+def search_persisted_chunk_context(
+    connection: "duckdb.DuckDBPyConnection",
+    *,
+    query: str,
+    source_id: str | None = None,
+    run_id: int | None = None,
+    limit: int = 5,
+    sibling_chunks_before: int = 1,
+    sibling_chunks_after: int = 1,
+) -> list[ChunkContextResult]:
+    if sibling_chunks_before < 0:
+        raise StorageError("sibling_chunks_before must be greater than or equal to 0")
+    if sibling_chunks_after < 0:
+        raise StorageError("sibling_chunks_after must be greater than or equal to 0")
+
+    matches = search_persisted_chunks(
+        connection,
+        query=query,
+        source_id=source_id,
+        run_id=run_id,
+        limit=limit,
+    )
+    if not matches:
+        return []
+
+    grouped_matches: dict[tuple[int, str, int], list[ChunkSearchResult]] = {}
+    ordered_keys: list[tuple[int, str, int]] = []
+    for match in matches:
+        key = (match.run_id, match.source_id, match.document_index)
+        if key not in grouped_matches:
+            grouped_matches[key] = []
+            ordered_keys.append(key)
+        grouped_matches[key].append(match)
+
+    grouped_context: list[ChunkContextResult] = []
+    for key in ordered_keys:
+        run_id_value, source_id_value, document_index_value = key
+        document_matches = grouped_matches[key]
+        match_chunk_indexes = sorted({match.chunk_index for match in document_matches})
+        match_chunk_index_set = set(match_chunk_indexes)
+
+        context_chunk_indexes: set[int] = set()
+        for chunk_index in match_chunk_indexes:
+            start_index = max(0, chunk_index - sibling_chunks_before)
+            end_index = chunk_index + sibling_chunks_after
+            context_chunk_indexes.update(range(start_index, end_index + 1))
+
+        document_chunks = _fetch_document_chunks(
+            connection,
+            run_id=run_id_value,
+            source_id=source_id_value,
+            document_index=document_index_value,
+        )
+
+        context_chunks: list[ChunkContextChunk] = []
+        for chunk in document_chunks:
+            if chunk.chunk_index not in context_chunk_indexes:
+                continue
+            context_chunks.append(
+                ChunkContextChunk(
+                    run_id=chunk.run_id,
+                    source_id=chunk.source_id,
+                    document_index=chunk.document_index,
+                    chunk_index=chunk.chunk_index,
+                    repo_relative_path=chunk.repo_relative_path,
+                    document_title=chunk.document_title,
+                    heading_title=chunk.heading_title,
+                    heading_path=None if chunk.heading_path is None else list(chunk.heading_path),
+                    character_count=chunk.character_count,
+                    content=chunk.content,
+                    is_match=chunk.chunk_index in match_chunk_index_set,
+                )
+            )
+
+        first_match = document_matches[0]
+        grouped_context.append(
+            ChunkContextResult(
+                run_id=first_match.run_id,
+                source_id=first_match.source_id,
+                document_index=first_match.document_index,
+                repo_relative_path=first_match.repo_relative_path,
+                document_title=first_match.document_title,
+                match_chunk_indexes=match_chunk_indexes,
+                chunks=context_chunks,
+            )
+        )
+
+    return grouped_context

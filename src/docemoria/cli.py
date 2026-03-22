@@ -6,7 +6,13 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from .chunk_search import ChunkSearchResult, search_persisted_chunks
+from .chunk_search import (
+    ChunkContextChunk,
+    ChunkContextResult,
+    ChunkSearchResult,
+    search_persisted_chunk_context,
+    search_persisted_chunks,
+)
 from .chunking import ChunkingError, DocumentChunk, chunk_documents
 from .config import ConfigError, load_docset_config, load_docset_configs
 from .discovery import DiscoveryError, discover_docset_files, resolve_docset_repo_path
@@ -127,6 +133,47 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum number of matching chunks to include (default: 5)",
     )
 
+    search_context_parser = subparsers.add_parser(
+        "search-context",
+        help=(
+            "Search persisted chunks and expand each document match with nearby sibling chunks "
+            "from the same run/document"
+        ),
+    )
+    search_context_parser.add_argument("query", help="Substring query to search for in chunk content")
+    search_context_parser.add_argument(
+        "--db-path",
+        default=DEFAULT_DB_PATH,
+        help=f"Path to DuckDB database file (default: {DEFAULT_DB_PATH})",
+    )
+    search_context_parser.add_argument(
+        "--source-id",
+        help="Optional source_id filter to restrict matching chunks",
+    )
+    search_context_parser.add_argument(
+        "--run-id",
+        type=int,
+        help="Optional ingest run_id filter to restrict matching chunks",
+    )
+    search_context_parser.add_argument(
+        "--limit",
+        type=int,
+        default=5,
+        help="Maximum number of matching chunks to include before grouping (default: 5)",
+    )
+    search_context_parser.add_argument(
+        "--before",
+        type=int,
+        default=1,
+        help="Number of sibling chunks to include before each matching chunk (default: 1)",
+    )
+    search_context_parser.add_argument(
+        "--after",
+        type=int,
+        default=1,
+        help="Number of sibling chunks to include after each matching chunk (default: 1)",
+    )
+
     return parser
 
 
@@ -175,6 +222,35 @@ def _chunk_search_payload(result: ChunkSearchResult) -> dict[str, object]:
         "heading_path": None if result.heading_path is None else list(result.heading_path),
         "character_count": result.character_count,
         "content": result.content,
+    }
+
+
+def _chunk_context_chunk_payload(chunk: ChunkContextChunk) -> dict[str, object]:
+    return {
+        "run_id": chunk.run_id,
+        "source_id": chunk.source_id,
+        "document_index": chunk.document_index,
+        "chunk_index": chunk.chunk_index,
+        "repo_relative_path": chunk.repo_relative_path,
+        "document_title": chunk.document_title,
+        "heading_title": chunk.heading_title,
+        "heading_path": None if chunk.heading_path is None else list(chunk.heading_path),
+        "character_count": chunk.character_count,
+        "content": chunk.content,
+        "is_match": chunk.is_match,
+    }
+
+
+def _chunk_context_payload(result: ChunkContextResult) -> dict[str, object]:
+    return {
+        "run_id": result.run_id,
+        "source_id": result.source_id,
+        "document_index": result.document_index,
+        "repo_relative_path": result.repo_relative_path,
+        "document_title": result.document_title,
+        "match_chunk_indexes": list(result.match_chunk_indexes),
+        "chunk_count": len(result.chunks),
+        "chunks": [_chunk_context_chunk_payload(chunk) for chunk in result.chunks],
     }
 
 
@@ -295,6 +371,35 @@ def main() -> int:
                 },
                 "match_count": len(matches),
                 "matches": [_chunk_search_payload(match) for match in matches],
+            }
+            print(json.dumps(payload, separators=(",", ":")))
+            return 0
+
+        if args.command == "search-context":
+            with open_database(Path(args.db_path)) as connection:
+                initialize_schema(connection)
+                grouped_matches = search_persisted_chunk_context(
+                    connection,
+                    query=args.query,
+                    source_id=args.source_id,
+                    run_id=args.run_id,
+                    limit=args.limit,
+                    sibling_chunks_before=args.before,
+                    sibling_chunks_after=args.after,
+                )
+            payload = {
+                "query": args.query,
+                "filters": {
+                    "source_id": args.source_id,
+                    "run_id": args.run_id,
+                    "limit": args.limit,
+                },
+                "context_window": {
+                    "before": args.before,
+                    "after": args.after,
+                },
+                "group_count": len(grouped_matches),
+                "groups": [_chunk_context_payload(match) for match in grouped_matches],
             }
             print(json.dumps(payload, separators=(",", ":")))
             return 0

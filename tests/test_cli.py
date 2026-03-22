@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from docemoria import cli
-from docemoria.chunk_search import ChunkSearchResult
+from docemoria.chunk_search import ChunkContextChunk, ChunkContextResult, ChunkSearchResult
 from docemoria.ingest import IngestResult
 from docemoria.ingest_results import IngestRunSummary
 
@@ -500,6 +500,103 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["filters"], {"source_id": "sample", "run_id": 7, "limit": 2})
         self.assertEqual(payload["match_count"], 1)
         self.assertEqual(payload["matches"][0]["heading_path"], ["Intro", "Details"])
+
+    def test_search_context_prints_grouped_context_json_and_passes_window(self) -> None:
+        stdout = io.StringIO()
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "search-context",
+                "needle",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+                "--source-id",
+                "sample",
+                "--run-id",
+                "7",
+                "--limit",
+                "2",
+                "--before",
+                "2",
+                "--after",
+                "1",
+            ],
+        ), patch(
+            "docemoria.cli.open_database",
+            return_value=connection,
+        ) as open_database_mock, patch(
+            "docemoria.cli.initialize_schema",
+        ) as initialize_schema_mock, patch(
+            "docemoria.cli.search_persisted_chunk_context",
+            return_value=[
+                ChunkContextResult(
+                    run_id=7,
+                    source_id="sample",
+                    document_index=0,
+                    repo_relative_path="docs/intro.md",
+                    document_title="Intro",
+                    match_chunk_indexes=[3],
+                    chunks=[
+                        ChunkContextChunk(
+                            run_id=7,
+                            source_id="sample",
+                            document_index=0,
+                            chunk_index=1,
+                            repo_relative_path="docs/intro.md",
+                            document_title="Intro",
+                            heading_title="Details",
+                            heading_path=["Intro", "Details"],
+                            character_count=40,
+                            content="context before",
+                            is_match=False,
+                        ),
+                        ChunkContextChunk(
+                            run_id=7,
+                            source_id="sample",
+                            document_index=0,
+                            chunk_index=3,
+                            repo_relative_path="docs/intro.md",
+                            document_title="Intro",
+                            heading_title="Details",
+                            heading_path=["Intro", "Details"],
+                            character_count=42,
+                            content="Needle content",
+                            is_match=True,
+                        ),
+                    ],
+                )
+            ],
+        ) as search_context_mock:
+            exit_code = cli.main()
+
+        rendered = stdout.getvalue().strip()
+        payload = json.loads(rendered)
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("\n", rendered)
+        open_database_mock.assert_called_once_with(Path("./tmp/docemoria.duckdb"))
+        initialize_schema_mock.assert_called_once_with(connection)
+        search_context_mock.assert_called_once_with(
+            connection,
+            query="needle",
+            source_id="sample",
+            run_id=7,
+            limit=2,
+            sibling_chunks_before=2,
+            sibling_chunks_after=1,
+        )
+        self.assertEqual(payload["query"], "needle")
+        self.assertEqual(payload["filters"], {"source_id": "sample", "run_id": 7, "limit": 2})
+        self.assertEqual(payload["context_window"], {"before": 2, "after": 1})
+        self.assertEqual(payload["group_count"], 1)
+        self.assertEqual(payload["groups"][0]["match_chunk_indexes"], [3])
+        self.assertEqual(payload["groups"][0]["chunk_count"], 2)
+        self.assertEqual(payload["groups"][0]["chunks"][0]["is_match"], False)
+        self.assertEqual(payload["groups"][0]["chunks"][1]["is_match"], True)
 
 
 if __name__ == "__main__":
