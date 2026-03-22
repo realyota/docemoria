@@ -46,6 +46,19 @@ class ChunkContextResult:
     chunks: list[ChunkContextChunk]
 
 
+@dataclass(slots=True)
+class ChunkSectionResult:
+    run_id: int
+    source_id: str
+    document_index: int
+    repo_relative_path: str
+    document_title: str | None
+    heading_title: str | None
+    heading_path: list[str] | None
+    match_chunk_indexes: list[int]
+    chunks: list[ChunkSearchResult]
+
+
 def _parse_heading_path(value: object) -> list[str] | None:
     if value is None:
         return None
@@ -77,6 +90,18 @@ def _map_chunk_search_result_row(row: tuple[object, ...]) -> ChunkSearchResult:
         character_count=int(row[8]),
         content=str(row[9]),
     )
+
+
+def _heading_group_key(match: ChunkSearchResult) -> tuple[str, ...]:
+    if match.heading_path:
+        return tuple(match.heading_path)
+
+    if match.heading_title is not None:
+        heading_title = match.heading_title.strip()
+        if heading_title:
+            return (heading_title,)
+
+    return ()
 
 
 def search_persisted_chunks(
@@ -141,6 +166,55 @@ def search_persisted_chunks(
         raise StorageError("Could not search persisted chunks in DuckDB") from exc
 
     return [_map_chunk_search_result_row(row) for row in rows]
+
+
+def search_persisted_chunk_sections(
+    connection: "duckdb.DuckDBPyConnection",
+    *,
+    query: str,
+    source_id: str | None = None,
+    run_id: int | None = None,
+    limit: int = 5,
+) -> list[ChunkSectionResult]:
+    matches = search_persisted_chunks(
+        connection,
+        query=query,
+        source_id=source_id,
+        run_id=run_id,
+        limit=limit,
+    )
+    if not matches:
+        return []
+
+    grouped_matches: dict[tuple[int, str, int, tuple[str, ...]], list[ChunkSearchResult]] = {}
+    ordered_keys: list[tuple[int, str, int, tuple[str, ...]]] = []
+    for match in matches:
+        key = (match.run_id, match.source_id, match.document_index, _heading_group_key(match))
+        if key not in grouped_matches:
+            grouped_matches[key] = []
+            ordered_keys.append(key)
+        grouped_matches[key].append(match)
+
+    grouped_sections: list[ChunkSectionResult] = []
+    for key in ordered_keys:
+        section_matches = grouped_matches[key]
+        first_match = section_matches[0]
+        match_chunk_indexes = sorted({match.chunk_index for match in section_matches})
+        grouped_sections.append(
+            ChunkSectionResult(
+                run_id=first_match.run_id,
+                source_id=first_match.source_id,
+                document_index=first_match.document_index,
+                repo_relative_path=first_match.repo_relative_path,
+                document_title=first_match.document_title,
+                heading_title=first_match.heading_title,
+                heading_path=None if first_match.heading_path is None else list(first_match.heading_path),
+                match_chunk_indexes=match_chunk_indexes,
+                chunks=list(section_matches),
+            )
+        )
+
+    return grouped_sections
 
 
 def _fetch_document_chunks(

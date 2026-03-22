@@ -209,3 +209,14 @@ The command:
 - finds matching persisted chunks by substring query,
 - groups hits by `(run_id, source_id, document_index)`,
 - expands each hit with sibling chunks before/after from the same document.
+
+Inspect grouped chunk sections for section-level review workflows:
+
+```bash
+PYTHONPATH=src python3 -m docemoria.cli search-sections "rate limit" --db-path data/docemoria.duckdb --limit 5
+```
+
+The command:
+- finds matching persisted chunks by substring query,
+- groups hits by section metadata (`heading_path`, fallback to `heading_title`) within `(run_id, source_id, document_index)`,
+- returns grouped matches with `match_chunk_indexes` and full matching chunk payloads.

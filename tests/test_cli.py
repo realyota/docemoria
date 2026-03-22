@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from docemoria import cli
-from docemoria.chunk_search import ChunkContextChunk, ChunkContextResult, ChunkSearchResult
+from docemoria.chunk_search import ChunkContextChunk, ChunkContextResult, ChunkSearchResult, ChunkSectionResult
 from docemoria.ingest import IngestResult
 from docemoria.ingest_results import IngestRunSummary
 
@@ -597,6 +597,97 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["groups"][0]["chunk_count"], 2)
         self.assertEqual(payload["groups"][0]["chunks"][0]["is_match"], False)
         self.assertEqual(payload["groups"][0]["chunks"][1]["is_match"], True)
+
+    def test_search_sections_prints_grouped_section_json_and_passes_filters(self) -> None:
+        stdout = io.StringIO()
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "search-sections",
+                "needle",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+                "--source-id",
+                "sample",
+                "--run-id",
+                "7",
+                "--limit",
+                "2",
+            ],
+        ), patch(
+            "docemoria.cli.open_database",
+            return_value=connection,
+        ) as open_database_mock, patch(
+            "docemoria.cli.initialize_schema",
+        ) as initialize_schema_mock, patch(
+            "docemoria.cli.search_persisted_chunk_sections",
+            return_value=[
+                ChunkSectionResult(
+                    run_id=7,
+                    source_id="sample",
+                    document_index=0,
+                    repo_relative_path="docs/intro.md",
+                    document_title="Intro",
+                    heading_title="Details",
+                    heading_path=["Intro", "Details"],
+                    match_chunk_indexes=[1, 2],
+                    chunks=[
+                        ChunkSearchResult(
+                            run_id=7,
+                            source_id="sample",
+                            document_index=0,
+                            chunk_index=1,
+                            repo_relative_path="docs/intro.md",
+                            document_title="Intro",
+                            heading_title="Details",
+                            heading_path=["Intro", "Details"],
+                            character_count=35,
+                            content="Needle content a",
+                        ),
+                        ChunkSearchResult(
+                            run_id=7,
+                            source_id="sample",
+                            document_index=0,
+                            chunk_index=2,
+                            repo_relative_path="docs/intro.md",
+                            document_title="Intro",
+                            heading_title="Details",
+                            heading_path=["Intro", "Details"],
+                            character_count=30,
+                            content="Needle content b",
+                        ),
+                    ],
+                )
+            ],
+        ) as search_sections_mock:
+            exit_code = cli.main()
+
+        rendered = stdout.getvalue().strip()
+        payload = json.loads(rendered)
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("\n", rendered)
+        open_database_mock.assert_called_once_with(Path("./tmp/docemoria.duckdb"))
+        initialize_schema_mock.assert_called_once_with(connection)
+        search_sections_mock.assert_called_once_with(
+            connection,
+            query="needle",
+            source_id="sample",
+            run_id=7,
+            limit=2,
+        )
+        self.assertEqual(payload["query"], "needle")
+        self.assertEqual(payload["filters"], {"source_id": "sample", "run_id": 7, "limit": 2})
+        self.assertEqual(payload["group_count"], 1)
+        self.assertEqual(payload["groups"][0]["heading_path"], ["Intro", "Details"])
+        self.assertEqual(payload["groups"][0]["match_chunk_indexes"], [1, 2])
+        self.assertEqual(payload["groups"][0]["chunk_count"], 2)
+        self.assertEqual(payload["groups"][0]["chunks"][0]["chunk_index"], 1)
+        self.assertEqual(payload["groups"][0]["chunks"][1]["chunk_index"], 2)
 
 
 if __name__ == "__main__":

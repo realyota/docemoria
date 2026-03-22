@@ -10,7 +10,9 @@ from .chunk_search import (
     ChunkContextChunk,
     ChunkContextResult,
     ChunkSearchResult,
+    ChunkSectionResult,
     search_persisted_chunk_context,
+    search_persisted_chunk_sections,
     search_persisted_chunks,
 )
 from .chunking import ChunkingError, DocumentChunk, chunk_documents
@@ -174,6 +176,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Number of sibling chunks to include after each matching chunk (default: 1)",
     )
 
+    search_sections_parser = subparsers.add_parser(
+        "search-sections",
+        help="Search persisted chunks and group matching chunks by section metadata",
+    )
+    search_sections_parser.add_argument("query", help="Substring query to search for in chunk content")
+    search_sections_parser.add_argument(
+        "--db-path",
+        default=DEFAULT_DB_PATH,
+        help=f"Path to DuckDB database file (default: {DEFAULT_DB_PATH})",
+    )
+    search_sections_parser.add_argument(
+        "--source-id",
+        help="Optional source_id filter to restrict matching chunks",
+    )
+    search_sections_parser.add_argument(
+        "--run-id",
+        type=int,
+        help="Optional ingest run_id filter to restrict matching chunks",
+    )
+    search_sections_parser.add_argument(
+        "--limit",
+        type=int,
+        default=5,
+        help="Maximum number of matching chunks to include before grouping (default: 5)",
+    )
+
     return parser
 
 
@@ -251,6 +279,21 @@ def _chunk_context_payload(result: ChunkContextResult) -> dict[str, object]:
         "match_chunk_indexes": list(result.match_chunk_indexes),
         "chunk_count": len(result.chunks),
         "chunks": [_chunk_context_chunk_payload(chunk) for chunk in result.chunks],
+    }
+
+
+def _chunk_section_payload(result: ChunkSectionResult) -> dict[str, object]:
+    return {
+        "run_id": result.run_id,
+        "source_id": result.source_id,
+        "document_index": result.document_index,
+        "repo_relative_path": result.repo_relative_path,
+        "document_title": result.document_title,
+        "heading_title": result.heading_title,
+        "heading_path": None if result.heading_path is None else list(result.heading_path),
+        "match_chunk_indexes": list(result.match_chunk_indexes),
+        "chunk_count": len(result.chunks),
+        "chunks": [_chunk_search_payload(chunk) for chunk in result.chunks],
     }
 
 
@@ -400,6 +443,29 @@ def main() -> int:
                 },
                 "group_count": len(grouped_matches),
                 "groups": [_chunk_context_payload(match) for match in grouped_matches],
+            }
+            print(json.dumps(payload, separators=(",", ":")))
+            return 0
+
+        if args.command == "search-sections":
+            with open_database(Path(args.db_path)) as connection:
+                initialize_schema(connection)
+                grouped_matches = search_persisted_chunk_sections(
+                    connection,
+                    query=args.query,
+                    source_id=args.source_id,
+                    run_id=args.run_id,
+                    limit=args.limit,
+                )
+            payload = {
+                "query": args.query,
+                "filters": {
+                    "source_id": args.source_id,
+                    "run_id": args.run_id,
+                    "limit": args.limit,
+                },
+                "group_count": len(grouped_matches),
+                "groups": [_chunk_section_payload(match) for match in grouped_matches],
             }
             print(json.dumps(payload, separators=(",", ":")))
             return 0
