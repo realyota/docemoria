@@ -152,6 +152,49 @@ class ChunkSearchTests(unittest.TestCase):
         self.assertEqual(groups, [])
         self.assertEqual(connection.call_count, 1)
 
+    def test_search_persisted_chunk_sections_keeps_same_heading_path_separate_across_documents(self) -> None:
+        class FakeCursor:
+            def __init__(self, rows: list[tuple[object, ...]]) -> None:
+                self._rows = rows
+
+            def fetchall(self) -> list[tuple[object, ...]]:
+                return self._rows
+
+        class FakeConnection:
+            def __init__(self, rows: list[tuple[object, ...]]) -> None:
+                self._rows = rows
+                self.calls: list[tuple[str, list[object]]] = []
+
+            def execute(self, query: str, params: list[object]) -> FakeCursor:
+                self.calls.append((query, params))
+                return FakeCursor(self._rows)
+
+        connection = FakeConnection(
+            [
+                (11, "sample", 0, 0, "docs/intro.md", "Intro", "Details", '["Intro", "Details"]', 10, "match-a"),
+                (11, "sample", 0, 1, "docs/intro.md", "Intro", "Details", '["Intro", "Details"]', 11, "match-b"),
+                (11, "sample", 1, 0, "docs/faq.md", "FAQ", "Details", '["Intro", "Details"]', 12, "match-c"),
+            ]
+        )
+
+        groups = search_persisted_chunk_sections(
+            connection,  # type: ignore[arg-type]
+            query="match",
+            limit=3,
+        )
+
+        self.assertEqual(len(groups), 2)
+        self.assertEqual(groups[0].document_index, 0)
+        self.assertEqual(groups[0].match_chunk_indexes, [0, 1])
+        self.assertEqual([chunk.chunk_index for chunk in groups[0].chunks], [0, 1])
+
+        self.assertEqual(groups[1].document_index, 1)
+        self.assertEqual(groups[1].match_chunk_indexes, [0])
+        self.assertEqual([chunk.chunk_index for chunk in groups[1].chunks], [0])
+
+        self.assertEqual(len(connection.calls), 1)
+        self.assertEqual(connection.calls[0][1], ["match", 3])
+
     def test_search_persisted_chunk_context_groups_matches_and_expands_sibling_window(self) -> None:
         class FakeCursor:
             def __init__(self, rows: list[tuple[object, ...]]) -> None:
