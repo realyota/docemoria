@@ -230,6 +230,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional ingest run_id filter to restrict matching chunks",
     )
 
+    retrieve_neighbors_parser = subparsers.add_parser(
+        "retrieve-neighbors",
+        help=(
+            "Load a docset config and retrieve sibling chunk context "
+            "using docset retrieval defaults"
+        ),
+    )
+    retrieve_neighbors_parser.add_argument("config_path", help="Path to a docset YAML config")
+    retrieve_neighbors_parser.add_argument("query", help="Substring query to search for in chunk content")
+    retrieve_neighbors_parser.add_argument(
+        "--db-path",
+        default=DEFAULT_DB_PATH,
+        help=f"Path to DuckDB database file (default: {DEFAULT_DB_PATH})",
+    )
+    retrieve_neighbors_parser.add_argument(
+        "--run-id",
+        type=int,
+        help="Optional ingest run_id filter to restrict matching chunks",
+    )
+
     return parser
 
 
@@ -527,6 +547,41 @@ def main() -> int:
                 },
                 "group_count": len(grouped_matches),
                 "groups": [_chunk_section_payload(match) for match in grouped_matches],
+            }
+            print(json.dumps(payload, separators=(",", ":")))
+            return 0
+
+        if args.command == "retrieve-neighbors":
+            config = load_docset_config(Path(args.config_path))
+            with open_database(Path(args.db_path)) as connection:
+                initialize_schema(connection)
+                grouped_matches = search_persisted_chunk_context(
+                    connection,
+                    query=args.query,
+                    source_id=config.source_id,
+                    run_id=args.run_id,
+                    limit=config.retrieval.top_k,
+                    sibling_chunks_before=config.retrieval.context_before_chunks,
+                    sibling_chunks_after=config.retrieval.context_after_chunks,
+                )
+            payload = {
+                "query": args.query,
+                "docset": {
+                    "config_path": str(Path(args.config_path)),
+                    "source_id": config.source_id,
+                    "label": config.label,
+                },
+                "filters": {
+                    "source_id": config.source_id,
+                    "run_id": args.run_id,
+                    "limit": config.retrieval.top_k,
+                },
+                "context_window": {
+                    "before": config.retrieval.context_before_chunks,
+                    "after": config.retrieval.context_after_chunks,
+                },
+                "group_count": len(grouped_matches),
+                "groups": [_chunk_context_payload(match) for match in grouped_matches],
             }
             print(json.dumps(payload, separators=(",", ":")))
             return 0

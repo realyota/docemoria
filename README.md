@@ -289,7 +289,7 @@ Current implemented slice:
 - minimal document loader that reads discovered UTF-8 `.md` / `.txt` files into an in-memory document model, including best-effort `document_title` extraction and stable document content checksums
 - chunk preview flow with `fixed-windows` and `markdown-sections` strategies, including stable chunk content checksums
 - minimal DuckDB storage bootstrap for the first ingest schema (`ingest_runs`, `sources`, `documents`, `chunks`) with persisted content checksum fields for future change tracking
-- simple CLI to list docsets, inspect a single config, preview selected source files/documents/chunks, initialize the database schema, run ingest, inspect persisted ingest results (`show-ingest-run`, `list-ingest-runs`), and search/retrieve persisted chunks (`search-chunks`, `search-context`, `search-sections`, `retrieve-context`)
+- simple CLI to list docsets, inspect a single config, preview selected source files/documents/chunks, initialize the database schema, run ingest, inspect persisted ingest results (`show-ingest-run`, `list-ingest-runs`), and search/retrieve persisted chunks (`search-chunks`, `search-context`, `search-sections`, `retrieve-context`, `retrieve-neighbors`)
 - optional section-size limiting for section retrieval via `retrieval.max_section_chars` (docset default) and `search-sections --max-section-chars` (CLI override)
 - ingest inspection command:
   - `docemoria show-ingest-run --db-path ./data/docemoria.duckdb` (latest run)

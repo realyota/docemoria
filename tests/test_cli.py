@@ -879,6 +879,105 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["group_count"], 1)
         self.assertEqual(payload["groups"][0]["heading_path"], ["Intro", "Details"])
 
+    def test_retrieve_neighbors_loads_docset_defaults_and_returns_context_groups(self) -> None:
+        stdout = io.StringIO()
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+        config_path = Path("configs/docsets/sample.yaml")
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "retrieve-neighbors",
+                str(config_path),
+                "needle",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+                "--run-id",
+                "7",
+            ],
+        ), patch(
+            "docemoria.cli.load_docset_config",
+            return_value=DocsetConfig(
+                source_id="sample",
+                label="Sample Docs",
+                repo_path="../../repos/sample-docs",
+                retrieval=RetrievalConfig(
+                    top_k=9,
+                    rerank=True,
+                    max_section_chars=None,
+                    context_before_chunks=0,
+                    context_after_chunks=2,
+                ),
+                config_path=str(config_path),
+            ),
+        ) as load_docset_config_mock, patch(
+            "docemoria.cli.open_database",
+            return_value=connection,
+        ) as open_database_mock, patch(
+            "docemoria.cli.initialize_schema",
+        ) as initialize_schema_mock, patch(
+            "docemoria.cli.search_persisted_chunk_context",
+            return_value=[
+                ChunkContextResult(
+                    run_id=7,
+                    source_id="sample",
+                    document_index=0,
+                    repo_relative_path="docs/intro.md",
+                    document_title="Intro",
+                    match_chunk_indexes=[1],
+                    chunks=[
+                        ChunkContextChunk(
+                            run_id=7,
+                            source_id="sample",
+                            document_index=0,
+                            chunk_index=1,
+                            repo_relative_path="docs/intro.md",
+                            document_title="Intro",
+                            heading_title="Details",
+                            heading_path=["Intro", "Details"],
+                            character_count=35,
+                            content="Needle content",
+                            is_match=True,
+                        ),
+                    ],
+                )
+            ],
+        ) as search_context_mock:
+            exit_code = cli.main()
+
+        rendered = stdout.getvalue().strip()
+        payload = json.loads(rendered)
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("\n", rendered)
+        load_docset_config_mock.assert_called_once_with(config_path)
+        open_database_mock.assert_called_once_with(Path("./tmp/docemoria.duckdb"))
+        initialize_schema_mock.assert_called_once_with(connection)
+        search_context_mock.assert_called_once_with(
+            connection,
+            query="needle",
+            source_id="sample",
+            run_id=7,
+            limit=9,
+            sibling_chunks_before=0,
+            sibling_chunks_after=2,
+        )
+        self.assertEqual(payload["query"], "needle")
+        self.assertEqual(
+            payload["docset"],
+            {
+                "config_path": str(config_path),
+                "source_id": "sample",
+                "label": "Sample Docs",
+            },
+        )
+        self.assertEqual(payload["filters"], {"source_id": "sample", "run_id": 7, "limit": 9})
+        self.assertEqual(payload["context_window"], {"before": 0, "after": 2})
+        self.assertEqual(payload["group_count"], 1)
+        self.assertEqual(payload["groups"][0]["match_chunk_indexes"], [1])
+
 
 if __name__ == "__main__":
     unittest.main()

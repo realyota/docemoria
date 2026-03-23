@@ -62,6 +62,8 @@ See `configs/docsets/example.yaml`.
 - `retrieval.top_k`
 - `retrieval.rerank`
 - `retrieval.max_section_chars`: optional positive integer cap for total characters returned per section in section-grouped retrieval (`null`/omitted means no cap)
+- `retrieval.context_before_chunks`: non-negative integer sibling-window default used for document-neighbor retrieval
+- `retrieval.context_after_chunks`: non-negative integer sibling-window default used for document-neighbor retrieval
 - `card_generation.preferred_types`
 - `card_generation.difficulty`
 - `card_generation.audience`
@@ -240,3 +242,16 @@ The command:
 - uses `retrieval.top_k` as the section-match limit,
 - applies `retrieval.max_section_chars` (when set) as the per-section character budget,
 - returns section-grouped chunk context with `match_chunk_indexes` and per-chunk `is_match` flags.
+
+Retrieve document-neighbor chunk context using docset retrieval defaults:
+
+```bash
+PYTHONPATH=src python3 -m docemoria.cli retrieve-neighbors configs/docsets/example.yaml "rate limit" --db-path data/docemoria.duckdb
+```
+
+The command:
+- loads the docset config,
+- uses the docset `source_id` as the persisted chunk filter,
+- uses `retrieval.top_k` as the match limit,
+- applies `retrieval.context_before_chunks` / `retrieval.context_after_chunks` as sibling window defaults,
+- returns document-grouped chunk neighbor context with `match_chunk_indexes` and per-chunk `is_match` flags.

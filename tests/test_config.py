@@ -73,6 +73,57 @@ class DocsetConfigTests(unittest.TestCase):
 
         self.assertIsNone(config.retrieval.max_section_chars)
 
+    def test_retrieval_context_chunk_windows_default_to_one(self) -> None:
+        with patch(
+            "docemoria.config._read_yaml",
+            return_value={"source_id": "minimal", "label": "Minimal", "repo_path": "docs/minimal"},
+        ):
+            config = load_docset_config(Path("configs/docsets/minimal.yaml"))
+
+        self.assertEqual(config.retrieval.context_before_chunks, 1)
+        self.assertEqual(config.retrieval.context_after_chunks, 1)
+
+    def test_retrieval_context_chunk_windows_can_be_set(self) -> None:
+        with patch(
+            "docemoria.config._read_yaml",
+            return_value={
+                "source_id": "scoped",
+                "label": "Scoped",
+                "repo_path": "docs/scoped",
+                "retrieval": {"context_before_chunks": 0, "context_after_chunks": 3},
+            },
+        ):
+            config = load_docset_config(Path("configs/docsets/with-context-window.yaml"))
+
+        self.assertEqual(config.retrieval.context_before_chunks, 0)
+        self.assertEqual(config.retrieval.context_after_chunks, 3)
+
+    def test_retrieval_context_before_chunks_must_be_non_negative(self) -> None:
+        with patch(
+            "docemoria.config._read_yaml",
+            return_value={
+                "source_id": "scoped",
+                "label": "Scoped",
+                "repo_path": "docs/scoped",
+                "retrieval": {"context_before_chunks": -1},
+            },
+        ):
+            with self.assertRaises(ConfigError):
+                load_docset_config(Path("configs/docsets/invalid-context-before.yaml"))
+
+    def test_retrieval_context_after_chunks_rejects_boolean(self) -> None:
+        with patch(
+            "docemoria.config._read_yaml",
+            return_value={
+                "source_id": "scoped",
+                "label": "Scoped",
+                "repo_path": "docs/scoped",
+                "retrieval": {"context_after_chunks": True},
+            },
+        ):
+            with self.assertRaises(ConfigError):
+                load_docset_config(Path("configs/docsets/invalid-context-after-bool.yaml"))
+
     def test_retrieval_max_section_chars_can_be_set(self) -> None:
         with patch(
             "docemoria.config._read_yaml",

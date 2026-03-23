@@ -50,6 +50,8 @@ chunking:
 retrieval:
   top_k: 8
   rerank: true
+  context_before_chunks: 1
+  context_after_chunks: 1
 
 card_generation:
   preferred_types:

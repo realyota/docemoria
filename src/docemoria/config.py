@@ -49,6 +49,8 @@ class RetrievalConfig:
     top_k: int = 8
     rerank: bool = True
     max_section_chars: int | None = None
+    context_before_chunks: int = 1
+    context_after_chunks: int = 1
 
 
 @dataclass(slots=True)
@@ -159,6 +161,27 @@ def _optional_positive_int(data: dict[str, Any], key: str, *, path: Path) -> int
     return parsed
 
 
+def _non_negative_int(data: dict[str, Any], key: str, *, path: Path, default: int) -> int:
+    value = data.get(key, default)
+
+    if isinstance(value, bool):
+        raise ConfigError(f"Field '{key}' must be a non-negative integer in {path}")
+
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, float):
+        raise ConfigError(f"Field '{key}' must be a non-negative integer in {path}")
+    else:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(f"Field '{key}' must be a non-negative integer in {path}") from exc
+
+    if parsed < 0:
+        raise ConfigError(f"Field '{key}' must be a non-negative integer in {path}")
+    return parsed
+
+
 def _validate_no_unknown_missing_basics(data: dict[str, Any], *, path: Path) -> None:
     for key in REQUIRED_TOP_LEVEL_FIELDS:
         if key not in data:
@@ -223,6 +246,18 @@ def load_docset_config(path: Path) -> DocsetConfig:
             top_k=int(retrieval.get("top_k", 8)),
             rerank=bool(retrieval.get("rerank", True)),
             max_section_chars=_optional_positive_int(retrieval, "max_section_chars", path=path),
+            context_before_chunks=_non_negative_int(
+                retrieval,
+                "context_before_chunks",
+                path=path,
+                default=1,
+            ),
+            context_after_chunks=_non_negative_int(
+                retrieval,
+                "context_after_chunks",
+                path=path,
+                default=1,
+            ),
         ),
         card_generation=CardGenerationConfig(
             preferred_types=list(card_generation.get("preferred_types", ["qa"])),
