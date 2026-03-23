@@ -174,6 +174,327 @@ class ChunkSearchTests(unittest.TestCase):
         self.assertEqual(groups, [])
         self.assertEqual(connection.call_count, 1)
 
+    def test_search_persisted_chunk_sections_requires_positive_max_section_chars(self) -> None:
+        with self.assertRaisesRegex(StorageError, "max_section_chars must be greater than 0 when provided"):
+            search_persisted_chunk_sections(  # type: ignore[arg-type]
+                object(),
+                query="match",
+                max_section_chars=0,
+            )
+
+    def test_search_persisted_chunk_sections_requires_integer_max_section_chars(self) -> None:
+        with self.assertRaisesRegex(StorageError, "max_section_chars must be greater than 0 when provided"):
+            search_persisted_chunk_sections(  # type: ignore[arg-type]
+                object(),
+                query="match",
+                max_section_chars=True,
+            )
+
+        with self.assertRaisesRegex(StorageError, "max_section_chars must be greater than 0 when provided"):
+            search_persisted_chunk_sections(  # type: ignore[arg-type]
+                object(),
+                query="match",
+                max_section_chars=1.5,
+            )
+
+    def test_search_persisted_chunk_sections_limits_by_budget_and_prioritizes_matches_then_neighbors(
+        self,
+    ) -> None:
+        class FakeCursor:
+            def __init__(self, rows: list[tuple[object, ...]]) -> None:
+                self._rows = rows
+
+            def fetchall(self) -> list[tuple[object, ...]]:
+                return self._rows
+
+        class FakeConnection:
+            def __init__(
+                self,
+                *,
+                search_rows: list[tuple[object, ...]],
+                document_rows: list[tuple[object, ...]],
+            ) -> None:
+                self._search_rows = search_rows
+                self._document_rows = document_rows
+
+            def execute(self, query: str, params: list[object]) -> FakeCursor:
+                if "strpos(lower(content), lower(?)) > 0" in query:
+                    return FakeCursor(self._search_rows)
+                return FakeCursor(self._document_rows)
+
+        search_rows = [
+            (
+                11,
+                "sample",
+                0,
+                2,
+                "docs/intro.md",
+                "Intro",
+                "Details",
+                '["Intro", "Details"]',
+                10,
+                "match-a",
+            ),
+            (
+                11,
+                "sample",
+                0,
+                4,
+                "docs/intro.md",
+                "Intro",
+                "Details",
+                '["Intro", "Details"]',
+                10,
+                "match-b",
+            ),
+        ]
+        document_rows = [
+            (
+                11,
+                "sample",
+                0,
+                0,
+                "docs/intro.md",
+                "Intro",
+                "Details",
+                '["Intro", "Details"]',
+                10,
+                "context-0",
+            ),
+            (
+                11,
+                "sample",
+                0,
+                1,
+                "docs/intro.md",
+                "Intro",
+                "Details",
+                '["Intro", "Details"]',
+                10,
+                "context-1",
+            ),
+            (
+                11,
+                "sample",
+                0,
+                2,
+                "docs/intro.md",
+                "Intro",
+                "Details",
+                '["Intro", "Details"]',
+                10,
+                "match-a",
+            ),
+            (
+                11,
+                "sample",
+                0,
+                3,
+                "docs/intro.md",
+                "Intro",
+                "Details",
+                '["Intro", "Details"]',
+                10,
+                "context-3",
+            ),
+            (
+                11,
+                "sample",
+                0,
+                4,
+                "docs/intro.md",
+                "Intro",
+                "Details",
+                '["Intro", "Details"]',
+                10,
+                "match-b",
+            ),
+            (
+                11,
+                "sample",
+                0,
+                5,
+                "docs/intro.md",
+                "Intro",
+                "Details",
+                '["Intro", "Details"]',
+                10,
+                "context-5",
+            ),
+        ]
+        connection = FakeConnection(search_rows=search_rows, document_rows=document_rows)
+
+        groups = search_persisted_chunk_sections(
+            connection,  # type: ignore[arg-type]
+            query="match",
+            limit=2,
+            max_section_chars=40,
+        )
+
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0].match_chunk_indexes, [2, 4])
+        self.assertEqual([chunk.chunk_index for chunk in groups[0].chunks], [1, 2, 3, 4])
+        self.assertEqual([chunk.is_match for chunk in groups[0].chunks], [False, True, False, True])
+        self.assertEqual(sum(chunk.character_count for chunk in groups[0].chunks), 40)
+
+    def test_search_persisted_chunk_sections_returns_empty_section_context_when_budget_too_small(self) -> None:
+        class FakeCursor:
+            def __init__(self, rows: list[tuple[object, ...]]) -> None:
+                self._rows = rows
+
+            def fetchall(self) -> list[tuple[object, ...]]:
+                return self._rows
+
+        class FakeConnection:
+            def execute(self, query: str, params: list[object]) -> FakeCursor:
+                if "strpos(lower(content), lower(?)) > 0" in query:
+                    return FakeCursor(
+                        [
+                            (
+                                11,
+                                "sample",
+                                0,
+                                1,
+                                "docs/intro.md",
+                                "Intro",
+                                "Details",
+                                '["Intro", "Details"]',
+                                10,
+                                "match-a",
+                            )
+                        ]
+                    )
+                return FakeCursor(
+                    [
+                        (
+                            11,
+                            "sample",
+                            0,
+                            0,
+                            "docs/intro.md",
+                            "Intro",
+                            "Details",
+                            '["Intro", "Details"]',
+                            10,
+                            "context-0",
+                        ),
+                        (
+                            11,
+                            "sample",
+                            0,
+                            1,
+                            "docs/intro.md",
+                            "Intro",
+                            "Details",
+                            '["Intro", "Details"]',
+                            10,
+                            "match-a",
+                        ),
+                        (
+                            11,
+                            "sample",
+                            0,
+                            2,
+                            "docs/intro.md",
+                            "Intro",
+                            "Details",
+                            '["Intro", "Details"]',
+                            10,
+                            "context-2",
+                        ),
+                    ]
+                )
+
+        groups = search_persisted_chunk_sections(
+            FakeConnection(),  # type: ignore[arg-type]
+            query="match",
+            limit=1,
+            max_section_chars=5,
+        )
+
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0].chunks, [])
+        self.assertEqual(groups[0].match_chunk_indexes, [])
+
+    def test_search_persisted_chunk_sections_skips_non_matches_when_no_match_fits_budget(self) -> None:
+        class FakeCursor:
+            def __init__(self, rows: list[tuple[object, ...]]) -> None:
+                self._rows = rows
+
+            def fetchall(self) -> list[tuple[object, ...]]:
+                return self._rows
+
+        class FakeConnection:
+            def execute(self, query: str, params: list[object]) -> FakeCursor:
+                if "strpos(lower(content), lower(?)) > 0" in query:
+                    return FakeCursor(
+                        [
+                            (
+                                11,
+                                "sample",
+                                0,
+                                1,
+                                "docs/intro.md",
+                                "Intro",
+                                "Details",
+                                '["Intro", "Details"]',
+                                30,
+                                "match-a",
+                            )
+                        ]
+                    )
+                return FakeCursor(
+                    [
+                        (
+                            11,
+                            "sample",
+                            0,
+                            0,
+                            "docs/intro.md",
+                            "Intro",
+                            "Details",
+                            '["Intro", "Details"]',
+                            10,
+                            "context-0",
+                        ),
+                        (
+                            11,
+                            "sample",
+                            0,
+                            1,
+                            "docs/intro.md",
+                            "Intro",
+                            "Details",
+                            '["Intro", "Details"]',
+                            30,
+                            "match-a",
+                        ),
+                        (
+                            11,
+                            "sample",
+                            0,
+                            2,
+                            "docs/intro.md",
+                            "Intro",
+                            "Details",
+                            '["Intro", "Details"]',
+                            10,
+                            "context-2",
+                        ),
+                    ]
+                )
+
+        groups = search_persisted_chunk_sections(
+            FakeConnection(),  # type: ignore[arg-type]
+            query="match",
+            limit=1,
+            max_section_chars=20,
+        )
+
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0].chunks, [])
+        self.assertEqual(groups[0].match_chunk_indexes, [])
+
     def test_search_persisted_chunk_sections_keeps_same_heading_path_separate_across_documents(self) -> None:
         class FakeCursor:
             def __init__(self, rows: list[tuple[object, ...]]) -> None:

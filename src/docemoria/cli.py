@@ -204,6 +204,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=5,
         help="Maximum number of matching chunks to include before grouping (default: 5)",
     )
+    search_sections_parser.add_argument(
+        "--max-section-chars",
+        type=int,
+        help="Optional positive character budget per returned section",
+    )
 
     retrieve_context_parser = subparsers.add_parser(
         "retrieve-context",
@@ -479,6 +484,7 @@ def main() -> int:
                     source_id=args.source_id,
                     run_id=args.run_id,
                     limit=args.limit,
+                    max_section_chars=args.max_section_chars,
                 )
             payload = {
                 "query": args.query,
@@ -486,6 +492,7 @@ def main() -> int:
                     "source_id": args.source_id,
                     "run_id": args.run_id,
                     "limit": args.limit,
+                    "max_section_chars": args.max_section_chars,
                 },
                 "group_count": len(grouped_matches),
                 "groups": [_chunk_section_payload(match) for match in grouped_matches],
@@ -503,6 +510,7 @@ def main() -> int:
                     source_id=config.source_id,
                     run_id=args.run_id,
                     limit=config.retrieval.top_k,
+                    max_section_chars=config.retrieval.max_section_chars,
                 )
             payload = {
                 "query": args.query,
@@ -515,6 +523,7 @@ def main() -> int:
                     "source_id": config.source_id,
                     "run_id": args.run_id,
                     "limit": config.retrieval.top_k,
+                    "max_section_chars": config.retrieval.max_section_chars,
                 },
                 "group_count": len(grouped_matches),
                 "groups": [_chunk_section_payload(match) for match in grouped_matches],

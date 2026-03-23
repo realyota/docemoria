@@ -1,6 +1,7 @@
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from docemoria.config import ConfigError, load_docset_config, load_docset_configs
 from docemoria.discovery import DiscoveryError, discover_docset_files, resolve_docset_repo_path
@@ -62,6 +63,68 @@ class DocsetConfigTests(unittest.TestCase):
             config = load_docset_config(tmp)
             self.assertEqual(config.ingest.include_globs, ["docs/**/*.md"])
             self.assertEqual(config.ingest.exclude_globs, ["docs/archive/**"])
+
+    def test_retrieval_max_section_chars_defaults_to_none(self) -> None:
+        with patch(
+            "docemoria.config._read_yaml",
+            return_value={"source_id": "minimal", "label": "Minimal", "repo_path": "docs/minimal"},
+        ):
+            config = load_docset_config(Path("configs/docsets/minimal.yaml"))
+
+        self.assertIsNone(config.retrieval.max_section_chars)
+
+    def test_retrieval_max_section_chars_can_be_set(self) -> None:
+        with patch(
+            "docemoria.config._read_yaml",
+            return_value={
+                "source_id": "scoped",
+                "label": "Scoped",
+                "repo_path": "docs/scoped",
+                "retrieval": {"max_section_chars": 900},
+            },
+        ):
+            config = load_docset_config(Path("configs/docsets/with-limit.yaml"))
+
+        self.assertEqual(config.retrieval.max_section_chars, 900)
+
+    def test_retrieval_max_section_chars_must_be_positive(self) -> None:
+        with patch(
+            "docemoria.config._read_yaml",
+            return_value={
+                "source_id": "scoped",
+                "label": "Scoped",
+                "repo_path": "docs/scoped",
+                "retrieval": {"max_section_chars": 0},
+            },
+        ):
+            with self.assertRaises(ConfigError):
+                load_docset_config(Path("configs/docsets/invalid-limit.yaml"))
+
+    def test_retrieval_max_section_chars_rejects_boolean(self) -> None:
+        with patch(
+            "docemoria.config._read_yaml",
+            return_value={
+                "source_id": "scoped",
+                "label": "Scoped",
+                "repo_path": "docs/scoped",
+                "retrieval": {"max_section_chars": True},
+            },
+        ):
+            with self.assertRaises(ConfigError):
+                load_docset_config(Path("configs/docsets/invalid-limit-bool.yaml"))
+
+    def test_retrieval_max_section_chars_rejects_non_integral_float(self) -> None:
+        with patch(
+            "docemoria.config._read_yaml",
+            return_value={
+                "source_id": "scoped",
+                "label": "Scoped",
+                "repo_path": "docs/scoped",
+                "retrieval": {"max_section_chars": 1.5},
+            },
+        ):
+            with self.assertRaises(ConfigError):
+                load_docset_config(Path("configs/docsets/invalid-limit-float.yaml"))
 
     def test_invalid_ingest_globs_raise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

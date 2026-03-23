@@ -695,9 +695,13 @@ class CliTests(unittest.TestCase):
             source_id="sample",
             run_id=7,
             limit=2,
+            max_section_chars=None,
         )
         self.assertEqual(payload["query"], "needle")
-        self.assertEqual(payload["filters"], {"source_id": "sample", "run_id": 7, "limit": 2})
+        self.assertEqual(
+            payload["filters"],
+            {"source_id": "sample", "run_id": 7, "limit": 2, "max_section_chars": None},
+        )
         self.assertEqual(payload["group_count"], 1)
         self.assertEqual(payload["groups"][0]["heading_path"], ["Intro", "Details"])
         self.assertEqual(payload["groups"][0]["match_chunk_indexes"], [1, 2])
@@ -708,6 +712,79 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["groups"][0]["chunks"][1]["is_match"])
         self.assertEqual(payload["groups"][0]["chunks"][2]["chunk_index"], 2)
         self.assertTrue(payload["groups"][0]["chunks"][2]["is_match"])
+
+    def test_search_sections_passes_max_section_chars_when_provided(self) -> None:
+        stdout = io.StringIO()
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "search-sections",
+                "needle",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+                "--limit",
+                "2",
+                "--max-section-chars",
+                "120",
+            ],
+        ), patch(
+            "docemoria.cli.open_database",
+            return_value=connection,
+        ), patch(
+            "docemoria.cli.initialize_schema",
+        ), patch(
+            "docemoria.cli.search_persisted_chunk_sections",
+            return_value=[],
+        ) as search_sections_mock:
+            exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue().strip())
+        self.assertEqual(exit_code, 0)
+        search_sections_mock.assert_called_once_with(
+            connection,
+            query="needle",
+            source_id=None,
+            run_id=None,
+            limit=2,
+            max_section_chars=120,
+        )
+        self.assertEqual(
+            payload["filters"],
+            {"source_id": None, "run_id": None, "limit": 2, "max_section_chars": 120},
+        )
+
+    def test_search_sections_rejects_non_positive_max_section_chars(self) -> None:
+        stderr = io.StringIO()
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+
+        with contextlib.redirect_stderr(stderr), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "search-sections",
+                "needle",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+                "--max-section-chars",
+                "0",
+            ],
+        ), patch(
+            "docemoria.cli.open_database",
+            return_value=connection,
+        ), patch(
+            "docemoria.cli.initialize_schema",
+        ):
+            exit_code = cli.main()
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("max_section_chars must be greater than 0 when provided", stderr.getvalue())
 
     def test_retrieve_context_loads_docset_defaults_and_returns_section_groups(self) -> None:
         stdout = io.StringIO()
@@ -734,7 +811,7 @@ class CliTests(unittest.TestCase):
                 source_id="sample",
                 label="Sample Docs",
                 repo_path="../../repos/sample-docs",
-                retrieval=RetrievalConfig(top_k=9, rerank=True),
+                retrieval=RetrievalConfig(top_k=9, rerank=True, max_section_chars=120),
                 config_path=str(config_path),
             ),
         ) as load_docset_config_mock, patch(
@@ -787,6 +864,7 @@ class CliTests(unittest.TestCase):
             source_id="sample",
             run_id=7,
             limit=9,
+            max_section_chars=120,
         )
         self.assertEqual(payload["query"], "needle")
         self.assertEqual(
@@ -797,7 +875,7 @@ class CliTests(unittest.TestCase):
                 "label": "Sample Docs",
             },
         )
-        self.assertEqual(payload["filters"], {"source_id": "sample", "run_id": 7, "limit": 9})
+        self.assertEqual(payload["filters"], {"source_id": "sample", "run_id": 7, "limit": 9, "max_section_chars": 120})
         self.assertEqual(payload["group_count"], 1)
         self.assertEqual(payload["groups"][0]["heading_path"], ["Intro", "Details"])
 

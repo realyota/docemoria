@@ -104,6 +104,57 @@ def _heading_group_key(match: ChunkSearchResult) -> tuple[str, ...]:
     return ()
 
 
+def _nearest_match_distance(chunk_index: int, match_chunk_indexes: list[int]) -> int:
+    if not match_chunk_indexes:
+        return 0
+    return min(abs(chunk_index - match_chunk_index) for match_chunk_index in match_chunk_indexes)
+
+
+def _limit_section_chunks(
+    *,
+    section_chunks: list[ChunkContextChunk],
+    match_chunk_indexes: list[int],
+    max_section_chars: int | None,
+) -> list[ChunkContextChunk]:
+    if max_section_chars is None:
+        return list(section_chunks)
+
+    total_section_chars = sum(max(chunk.character_count, 0) for chunk in section_chunks)
+    if total_section_chars <= max_section_chars:
+        return list(section_chunks)
+
+    matches = [chunk for chunk in section_chunks if chunk.is_match]
+    non_matches = [chunk for chunk in section_chunks if not chunk.is_match]
+    non_matches.sort(key=lambda chunk: (_nearest_match_distance(chunk.chunk_index, match_chunk_indexes), chunk.chunk_index))
+
+    selected_chunks: list[ChunkContextChunk] = []
+    selected_chunk_indexes: set[int] = set()
+    selected_chars = 0
+
+    for chunk in matches:
+        if chunk.chunk_index in selected_chunk_indexes:
+            continue
+        next_chars = selected_chars + max(chunk.character_count, 0)
+        if next_chars > max_section_chars:
+            continue
+        selected_chunks.append(chunk)
+        selected_chunk_indexes.add(chunk.chunk_index)
+        selected_chars = next_chars
+
+    if selected_chunks:
+        for chunk in non_matches:
+            if chunk.chunk_index in selected_chunk_indexes:
+                continue
+            next_chars = selected_chars + max(chunk.character_count, 0)
+            if next_chars > max_section_chars:
+                continue
+            selected_chunks.append(chunk)
+            selected_chunk_indexes.add(chunk.chunk_index)
+            selected_chars = next_chars
+
+    return sorted(selected_chunks, key=lambda chunk: chunk.chunk_index)
+
+
 def search_persisted_chunks(
     connection: "duckdb.DuckDBPyConnection",
     *,
@@ -175,7 +226,15 @@ def search_persisted_chunk_sections(
     source_id: str | None = None,
     run_id: int | None = None,
     limit: int = 5,
+    max_section_chars: int | None = None,
 ) -> list[ChunkSectionResult]:
+    if isinstance(max_section_chars, bool) or (
+        max_section_chars is not None and not isinstance(max_section_chars, int)
+    ):
+        raise StorageError("max_section_chars must be greater than 0 when provided")
+    if max_section_chars is not None and max_section_chars < 1:
+        raise StorageError("max_section_chars must be greater than 0 when provided")
+
     matches = search_persisted_chunks(
         connection,
         query=query,
@@ -235,6 +294,14 @@ def search_persisted_chunk_sections(
                     is_match=chunk.chunk_index in match_chunk_index_set,
                 )
             )
+        bounded_section_chunks = _limit_section_chunks(
+            section_chunks=section_chunks,
+            match_chunk_indexes=match_chunk_indexes,
+            max_section_chars=max_section_chars,
+        )
+        bounded_match_chunk_indexes = [
+            chunk.chunk_index for chunk in bounded_section_chunks if chunk.is_match
+        ]
 
         grouped_sections.append(
             ChunkSectionResult(
@@ -245,8 +312,8 @@ def search_persisted_chunk_sections(
                 document_title=first_match.document_title,
                 heading_title=first_match.heading_title,
                 heading_path=None if first_match.heading_path is None else list(first_match.heading_path),
-                match_chunk_indexes=match_chunk_indexes,
-                chunks=section_chunks,
+                match_chunk_indexes=bounded_match_chunk_indexes,
+                chunks=bounded_section_chunks,
             )
         )
 

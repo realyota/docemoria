@@ -61,6 +61,7 @@ See `configs/docsets/example.yaml`.
 - `chunking.overlap_chars`
 - `retrieval.top_k`
 - `retrieval.rerank`
+- `retrieval.max_section_chars`: optional positive integer cap for total characters returned per section in section-grouped retrieval (`null`/omitted means no cap)
 - `card_generation.preferred_types`
 - `card_generation.difficulty`
 - `card_generation.audience`
@@ -216,6 +217,12 @@ Inspect grouped chunk sections for section-level review workflows:
 PYTHONPATH=src python3 -m docemoria.cli search-sections "rate limit" --db-path data/docemoria.duckdb --limit 5
 ```
 
+Optional section-size cap for returned section context:
+
+```bash
+PYTHONPATH=src python3 -m docemoria.cli search-sections "rate limit" --db-path data/docemoria.duckdb --limit 5 --max-section-chars 1200
+```
+
 The command:
 - finds matching persisted chunks by substring query,
 - groups hits by section metadata (`heading_path`, fallback to `heading_title`) within `(run_id, source_id, document_index)`,
@@ -231,4 +238,5 @@ The command:
 - loads the docset config,
 - uses the docset `source_id` as the persisted chunk filter,
 - uses `retrieval.top_k` as the section-match limit,
+- applies `retrieval.max_section_chars` (when set) as the per-section character budget,
 - returns section-grouped chunk context with `match_chunk_indexes` and per-chunk `is_match` flags.
