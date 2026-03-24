@@ -21,6 +21,7 @@ from .discovery import DiscoveryError, discover_docset_files, resolve_docset_rep
 from .document_loading import DocumentLoadingError, SourceDocument, load_documents
 from .ingest import DEFAULT_DB_PATH, ingest_docset
 from .ingest_results import fetch_ingest_run_summary, fetch_recent_ingest_runs
+from .qa import perform_qa
 from .storage import StorageError, initialize_schema, open_database
 
 
@@ -248,6 +249,28 @@ def build_parser() -> argparse.ArgumentParser:
         "--run-id",
         type=int,
         help="Optional ingest run_id filter to restrict matching chunks",
+    )
+
+    qa_parser = subparsers.add_parser(
+        "ask",
+        help="Ask a question over documentation using LLM + RAG",
+    )
+    qa_parser.add_argument("config_path", help="Path to a docset YAML config")
+    qa_parser.add_argument("query", help="Question to ask")
+    qa_parser.add_argument(
+        "--db-path",
+        default=DEFAULT_DB_PATH,
+        help=f"Path to DuckDB database file (default: {DEFAULT_DB_PATH})",
+    )
+    qa_parser.add_argument(
+        "--run-id",
+        type=int,
+        help="Optional ingest run_id filter",
+    )
+    qa_parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print retrieved context and final prompt",
     )
 
     return parser
@@ -584,6 +607,17 @@ def main() -> int:
                 "groups": [_chunk_context_payload(match) for match in grouped_matches],
             }
             print(json.dumps(payload, separators=(",", ":")))
+            return 0
+
+        if args.command == "ask":
+            answer = perform_qa(
+                Path(args.config_path),
+                args.query,
+                db_path=Path(args.db_path),
+                run_id=args.run_id,
+                verbose=args.verbose,
+            )
+            print(answer)
             return 0
 
         parser.error(f"Unsupported command: {args.command}")
