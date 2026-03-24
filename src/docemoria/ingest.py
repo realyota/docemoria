@@ -168,7 +168,7 @@ def _persist_ingest_transaction(
             DO UPDATE SET
               label = EXCLUDED.label,
               repo_path = EXCLUDED.repo_path,
-              updated_at = CURRENT_TIMESTAMP
+              updated_at = now()
             """,
             [config.source_id, config.label, str(repo_root)],
         )
