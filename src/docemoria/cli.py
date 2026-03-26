@@ -23,6 +23,7 @@ from .ingest import DEFAULT_DB_PATH, ingest_docset
 from .ingest_results import fetch_ingest_run_summary, fetch_recent_ingest_runs
 from .qa import perform_qa
 from .storage import StorageError, initialize_schema, open_database
+from .summarize import summarize_run
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -271,6 +272,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--verbose",
         action="store_true",
         help="Print retrieved context and final prompt",
+    )
+
+    summarize_parser = subparsers.add_parser(
+        "summarize-run",
+        help="Generate document and global summaries for one persisted ingest run",
+    )
+    summarize_parser.add_argument("config_path", help="Path to a docset YAML config")
+    summarize_parser.add_argument("run_id", type=int, help="Ingest run_id to summarize")
+    summarize_parser.add_argument(
+        "--db-path",
+        default=DEFAULT_DB_PATH,
+        help=f"Path to DuckDB database file (default: {DEFAULT_DB_PATH})",
     )
 
     return parser
@@ -620,9 +633,16 @@ def main() -> int:
             print(answer)
             return 0
 
+        if args.command == "summarize-run":
+            config = load_docset_config(Path(args.config_path))
+            with open_database(Path(args.db_path)) as connection:
+                initialize_schema(connection)
+                summarize_run(connection, config, run_id=args.run_id, verbose=False)
+            return 0
+
         parser.error(f"Unsupported command: {args.command}")
         return 2
-    except (ChunkingError, ConfigError, DiscoveryError, DocumentLoadingError, StorageError) as exc:
+    except (ChunkingError, ConfigError, DiscoveryError, DocumentLoadingError, StorageError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

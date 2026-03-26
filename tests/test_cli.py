@@ -382,6 +382,49 @@ class CliTests(unittest.TestCase):
         fetch_summary_mock.assert_called_once_with(connection, run_id=7)
         self.assertEqual(payload["run_id"], 7)
 
+    def test_summarize_run_executes_summarization(self) -> None:
+        stdout = io.StringIO()
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+        config_path = Path("configs/docsets/sample.yaml")
+        config = DocsetConfig(
+            source_id="sample",
+            label="Sample Docs",
+            repo_path="../../repos/sample-docs",
+            config_path=str(config_path),
+        )
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "summarize-run",
+                str(config_path),
+                "11",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+            ],
+        ), patch(
+            "docemoria.cli.load_docset_config",
+            return_value=config,
+        ) as load_docset_config_mock, patch(
+            "docemoria.cli.open_database",
+            return_value=connection,
+        ) as open_database_mock, patch(
+            "docemoria.cli.initialize_schema",
+        ) as initialize_schema_mock, patch(
+            "docemoria.cli.summarize_run",
+        ) as summarize_run_mock:
+            exit_code = cli.main()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue(), "")
+        load_docset_config_mock.assert_called_once_with(config_path)
+        open_database_mock.assert_called_once_with(Path("./tmp/docemoria.duckdb"))
+        initialize_schema_mock.assert_called_once_with(connection)
+        summarize_run_mock.assert_called_once_with(connection, config, run_id=11, verbose=False)
+
     def test_list_ingest_runs_prints_compact_json_and_respects_limit(self) -> None:
         stdout = io.StringIO()
         connection = MagicMock()

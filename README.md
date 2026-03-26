@@ -296,6 +296,8 @@ Current implemented slice:
   - `docemoria show-ingest-run --db-path ./data/docemoria.duckdb --run-id 7` (specific run)
   - `docemoria list-ingest-runs --db-path ./data/docemoria.duckdb --limit 10` (recent runs)
 - initial tests for config loading, discovery, document loading, chunking, storage bootstrap, and CLI behavior
+- experimental compressed-knowledge summarization flow via `summarize-run`, persisting per-document summaries plus a run-level summary in DuckDB
+- Q&A context assembly that can include persisted document/run summaries alongside raw retrieved sections
 - config format notes in `docs/docset-config.md`
 
 ---

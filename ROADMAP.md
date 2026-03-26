@@ -12,6 +12,9 @@ Zaimplementowane w kodzie:
   - `fixed-windows`
   - `markdown-sections`
   - metadata nagłówków (`heading_title`, `heading_level`, `heading_path`)
+- eksperymentalny flow kompresji wiedzy:
+  - `summarize-run` generujące summary per dokument oraz summary całego runu
+  - użycie zapisanych summary w kontekście Q&A obok surowych chunków
 - minimalny bootstrap storage na DuckDB:
   - otwieranie bazy
   - inicjalizacja schematu `ingest_runs` / `sources` / `documents` / `chunks`

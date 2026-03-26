@@ -26,7 +26,8 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
         status TEXT NOT NULL,
         document_count INTEGER NOT NULL DEFAULT 0,
         chunk_count INTEGER NOT NULL DEFAULT 0,
-        error_message TEXT
+        error_message TEXT,
+        summary TEXT
     )
     """,
     """
@@ -48,6 +49,8 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
         document_title TEXT,
         character_count INTEGER NOT NULL,
         content TEXT NOT NULL,
+        summary TEXT,
+        summary_checksum TEXT,
         content_checksum TEXT,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (run_id, document_index)
@@ -113,6 +116,33 @@ def _ensure_document_content_checksum_column(connection: "duckdb.DuckDBPyConnect
         connection.execute("ALTER TABLE documents ADD COLUMN content_checksum TEXT")
 
 
+def _ensure_document_summary_column(connection: "duckdb.DuckDBPyConnection") -> None:
+    document_columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info('documents')").fetchall()
+    }
+    if "summary" not in document_columns:
+        connection.execute("ALTER TABLE documents ADD COLUMN summary TEXT")
+
+
+def _ensure_document_summary_checksum_column(connection: "duckdb.DuckDBPyConnection") -> None:
+    document_columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info('documents')").fetchall()
+    }
+    if "summary_checksum" not in document_columns:
+        connection.execute("ALTER TABLE documents ADD COLUMN summary_checksum TEXT")
+
+
+def _ensure_ingest_run_summary_column(connection: "duckdb.DuckDBPyConnection") -> None:
+    run_columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info('ingest_runs')").fetchall()
+    }
+    if "summary" not in run_columns:
+        connection.execute("ALTER TABLE ingest_runs ADD COLUMN summary TEXT")
+
+
 def _ensure_chunk_content_checksum_column(connection: "duckdb.DuckDBPyConnection") -> None:
     chunk_columns = {
         str(row[1])
@@ -155,6 +185,9 @@ def initialize_schema(connection: "duckdb.DuckDBPyConnection") -> None:
         _ensure_chunk_content_checksum_column(connection)
         _ensure_document_title_column(connection)
         _ensure_document_content_checksum_column(connection)
+        _ensure_document_summary_column(connection)
+        _ensure_document_summary_checksum_column(connection)
+        _ensure_ingest_run_summary_column(connection)
     except Exception as exc:
         if duckdb is not None and isinstance(exc, duckdb.Error):
             raise StorageError("Could not initialize DuckDB schema") from exc

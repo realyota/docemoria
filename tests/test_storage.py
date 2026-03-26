@@ -271,6 +271,10 @@ class StorageBootstrapTests(unittest.TestCase):
                 row[1]
                 for row in connection.execute("PRAGMA table_info('chunks')").fetchall()
             }
+            run_columns = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info('ingest_runs')").fetchall()
+            }
 
             self.assertTrue(
                 {
@@ -282,6 +286,8 @@ class StorageBootstrapTests(unittest.TestCase):
                     "document_title",
                     "character_count",
                     "content",
+                    "summary",
+                    "summary_checksum",
                     "content_checksum",
                 }.issubset(document_columns)
             )
@@ -301,6 +307,7 @@ class StorageBootstrapTests(unittest.TestCase):
                     "content_checksum",
                 }.issubset(chunk_columns)
             )
+            self.assertIn("summary", run_columns)
 
     def test_initialize_schema_adds_document_title_column_to_existing_chunks_table(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -369,6 +376,8 @@ class StorageBootstrapTests(unittest.TestCase):
                 for row in connection.execute("PRAGMA table_info('documents')").fetchall()
             }
             self.assertIn("content_checksum", document_columns)
+            self.assertIn("summary", document_columns)
+            self.assertIn("summary_checksum", document_columns)
 
     def test_ingest_docset_persists_rows_in_core_tables(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

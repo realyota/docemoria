@@ -11,14 +11,89 @@ from docemoria.storage import StorageError, open_database
 
 DEFAULT_DB_PATH = "docemoria.db"
 
-def format_context(sections: list[ChunkSectionResult]) -> str:
+def _load_document_summaries(
+    connection: "duckdb.DuckDBPyConnection",
+    sections: list[ChunkSectionResult],
+) -> dict[tuple[int, str, int], str]:
+    if connection is None:
+        return {}
+
+    summaries: dict[tuple[int, str, int], str] = {}
+    for section in sections:
+        key = (section.run_id, section.source_id, section.document_index)
+        if key in summaries:
+            continue
+
+        try:
+            row = connection.execute(
+                """
+                SELECT summary
+                FROM documents
+                WHERE run_id = ? AND document_index = ?
+                """,
+                [section.run_id, section.document_index],
+            ).fetchone()
+        except Exception:
+            return {}
+
+        if row is None:
+            continue
+
+        summary = row[0]
+        if summary is not None:
+            summaries[key] = str(summary)
+    return summaries
+
+
+def _load_run_summary(
+    connection: "duckdb.DuckDBPyConnection | None",
+    run_id: int | None,
+) -> str | None:
+    if connection is None or run_id is None:
+        return None
+
+    try:
+        row = connection.execute(
+            """
+            SELECT summary
+            FROM ingest_runs
+            WHERE run_id = ?
+            """,
+            [run_id],
+        ).fetchone()
+    except Exception:
+        return None
+
+    if row is None or row[0] is None:
+        return None
+
+    return str(row[0])
+
+
+def format_context(
+    sections: list[ChunkSectionResult],
+    *,
+    connection: "duckdb.DuckDBPyConnection | None" = None,
+    run_id: int | None = None,
+) -> str:
     """Format retrieved sections into a context string for the LLM."""
+    relevant_run_id = run_id
+    if relevant_run_id is None and sections:
+        relevant_run_id = sections[0].run_id
+
+    global_summary = _load_run_summary(connection, relevant_run_id)
+    summary_by_document = _load_document_summaries(connection, sections)
     context_parts = []
+    if global_summary:
+        context_parts.append(f"Global Context:\n{global_summary}")
+
     for section in sections:
         file_path = section.repo_relative_path
+        summary = summary_by_document.get((section.run_id, section.source_id, section.document_index))
+        summary_line = f"Summary: {summary}\n" if summary else ""
         heading = f"## {section.heading_title}" if section.heading_title else ""
         content = "\n".join(chunk.content for chunk in section.chunks)
-        context_parts.append(f"File: {file_path}\n{heading}\n{content}")
+        context_parts.append(f"File: {file_path}\n{summary_line}{heading}\n{content}")
     
     return "\n\n---\n\n".join(context_parts)
 
@@ -56,11 +131,11 @@ def perform_qa(
             limit=config.retrieval.top_k,
             max_section_chars=config.retrieval.max_section_chars
         )
-    
+        relevant_run_id = run_id if run_id is not None else (sections[0].run_id if sections else None)
+        context_text = format_context(sections, connection=conn, run_id=relevant_run_id)
+
     if not sections:
         return "No relevant documentation found for the given query."
-
-    context_text = format_context(sections)
     
     # 3. Setup Provider
     gen_config = config.providers.generation

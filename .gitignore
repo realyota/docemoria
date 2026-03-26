@@ -13,3 +13,7 @@ USER.md
 
 # Local idea scratchpad
 idea/
+
+# Local databases
+*.db
+*.duckdb
