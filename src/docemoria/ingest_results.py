@@ -20,6 +20,41 @@ class IngestRunSummary:
     error_message: str | None
 
 
+def resolve_latest_successful_run_id(
+    connection: "duckdb.DuckDBPyConnection",
+    source_id: str,
+) -> int:
+    """Return the most recent successful run_id for the given source."""
+    if connection is None:
+        raise StorageError("DuckDB connection is required to resolve latest successful run")
+
+    source_id_text = source_id.strip()
+    if not source_id_text:
+        raise StorageError("source_id must be a non-empty string when resolving latest run")
+
+    try:
+        row = connection.execute(
+            """
+            SELECT run_id
+            FROM ingest_runs
+            WHERE source_id = ?
+              AND status = 'success'
+            ORDER BY run_id DESC
+            LIMIT 1
+            """,
+            [source_id_text],
+        ).fetchone()
+    except StorageError:
+        raise
+    except Exception as exc:
+        raise StorageError("Could not resolve latest successful ingest run from DuckDB") from exc
+
+    if row is None or row[0] is None:
+        raise StorageError(f"No successful ingest runs found for source_id: {source_id_text}")
+
+    return int(row[0])
+
+
 def _map_ingest_run_summary_row(row: tuple[object, ...]) -> IngestRunSummary:
     return IngestRunSummary(
         run_id=int(row[0]),

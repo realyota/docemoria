@@ -6,6 +6,7 @@ from pathlib import Path
 
 from docemoria.chunk_search import ChunkSectionResult, search_persisted_chunk_sections
 from docemoria.config import ConfigError, load_docset_config
+from docemoria.ingest_results import resolve_latest_successful_run_id
 from docemoria.providers.openai import OpenAIGenerationProvider
 from docemoria.storage import StorageError, open_database
 
@@ -123,16 +124,18 @@ def perform_qa(
     
     # 2. Retrieve relevant context
     with open_database(db_path) as conn:
+        resolved_run_id = run_id
+        if resolved_run_id is None:
+            resolved_run_id = resolve_latest_successful_run_id(conn, source_id=config.source_id)
         sections = search_persisted_chunk_sections(
             conn,
             query=query,
             source_id=config.source_id,
-            run_id=run_id,
+            run_id=resolved_run_id,
             limit=config.retrieval.top_k,
             max_section_chars=config.retrieval.max_section_chars
         )
-        relevant_run_id = run_id if run_id is not None else (sections[0].run_id if sections else None)
-        context_text = format_context(sections, connection=conn, run_id=relevant_run_id)
+        context_text = format_context(sections, connection=conn, run_id=resolved_run_id)
 
     if not sections:
         return "No relevant documentation found for the given query."

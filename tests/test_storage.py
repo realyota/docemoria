@@ -9,7 +9,11 @@ import docemoria
 from docemoria.chunking import DocumentChunk
 from docemoria.document_loading import SourceDocument
 from docemoria.ingest import _insert_chunks, _insert_documents, ingest_docset
-from docemoria.ingest_results import fetch_ingest_run_summary, fetch_recent_ingest_runs
+from docemoria.ingest_results import (
+    fetch_ingest_run_summary,
+    fetch_recent_ingest_runs,
+    resolve_latest_successful_run_id,
+)
 from docemoria.storage import StorageError, initialize_schema, open_database
 
 DUCKDB_AVAILABLE = importlib.util.find_spec("duckdb") is not None
@@ -154,6 +158,47 @@ class StorageApiSurfaceTests(unittest.TestCase):
 
         with self.assertRaisesRegex(StorageError, "Limit must be greater than 0"):
             fetch_recent_ingest_runs(FakeConnection(), limit=0)  # type: ignore[arg-type]
+
+    def test_resolve_latest_successful_run_id_returns_most_recent_success(self) -> None:
+        class FakeCursor:
+            def __init__(self, row: tuple[object, ...] | None) -> None:
+                self._row = row
+
+            def fetchone(self) -> tuple[object, ...] | None:
+                return self._row
+
+        class FakeConnection:
+            def __init__(self, row: tuple[object, ...] | None) -> None:
+                self.row = row
+                self.calls: list[tuple[str, list[str]]] = []
+
+            def execute(self, query: str, params: list[str]) -> FakeCursor:
+                self.calls.append((query, params))
+                return FakeCursor(self.row)
+
+        connection = FakeConnection((77, None))
+        run_id = resolve_latest_successful_run_id(connection, source_id="sample")
+
+        self.assertEqual(run_id, 77)
+        self.assertEqual(connection.calls[0][1], ["sample"])
+
+    def test_resolve_latest_successful_run_id_errors_when_missing(self) -> None:
+        class FakeCursor:
+            def fetchone(self) -> None:
+                return None
+
+        class FakeConnection:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, list[str]]] = []
+
+            def execute(self, query: str, params: list[str]) -> FakeCursor:
+                self.calls.append((query, params))
+                return FakeCursor()
+
+        connection = FakeConnection()
+        with self.assertRaisesRegex(StorageError, "No successful ingest runs found"):
+            resolve_latest_successful_run_id(connection, source_id="missing")
+        self.assertEqual(connection.calls[0][1], ["missing"])
 
     def test_insert_documents_persists_content_checksum_value(self) -> None:
         class FakeConnection:
