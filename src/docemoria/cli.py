@@ -273,6 +273,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print retrieved context and final prompt",
     )
+    qa_parser.add_argument(
+        "--with-sources",
+        action="store_true",
+        help="Print structured source references used to build the answer",
+    )
 
     summarize_parser = subparsers.add_parser(
         "summarize-run",
@@ -623,14 +628,20 @@ def main() -> int:
             return 0
 
         if args.command == "ask":
-            answer = perform_qa(
+            result = perform_qa(
                 Path(args.config_path),
                 args.query,
                 db_path=Path(args.db_path),
                 run_id=args.run_id,
                 verbose=args.verbose,
+                include_sources=args.with_sources,
             )
-            print(answer)
+            if args.with_sources and isinstance(result, tuple):
+                answer, sources = result
+                print(answer)
+                print(json.dumps({"sources": sources}, separators=(",", ":")))
+            else:
+                print(result)
             return 0
 
         if args.command == "summarize-run":

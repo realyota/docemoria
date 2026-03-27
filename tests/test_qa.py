@@ -120,6 +120,69 @@ class TestQA(unittest.TestCase):
             )
             format_mock.assert_called_once_with([section], connection=connection, run_id=run_id)
 
+    def test_perform_qa_can_return_structured_sources(self) -> None:
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+        run_id = 9
+        section = self._section(run_id=run_id)
+        fake_config = SimpleNamespace(
+            source_id="sample",
+            retrieval=SimpleNamespace(top_k=3, max_section_chars=None),
+            providers=SimpleNamespace(generation=SimpleNamespace(provider="openai", model="gpt-5.4")),
+            prompts=SimpleNamespace(system=""),
+        )
+
+        with patch("docemoria.qa.open_database", return_value=connection), patch(
+            "docemoria.qa.load_docset_config",
+            return_value=fake_config,
+        ) as load_docset_config_mock, patch(
+            "docemoria.qa.resolve_latest_successful_run_id",
+            return_value=run_id,
+        ) as resolve_run_id_mock, patch(
+            "docemoria.qa.search_persisted_chunk_sections",
+            return_value=[section],
+        ) as search_mock, patch(
+            "docemoria.qa.format_context",
+            return_value="Context",
+        ) as format_mock, patch("docemoria.qa.OpenAIGenerationProvider") as provider_class:
+            provider = MagicMock()
+            provider.generate.return_value = "answer"
+            provider_class.return_value = provider
+
+            answer, sources = perform_qa(
+                Path("configs/docsets/sample.yaml"),
+                "How?",
+                db_path=Path("/tmp/docemoria.duckdb"),
+                include_sources=True,
+            )
+
+            self.assertEqual(answer, "answer")
+            self.assertEqual(
+                sources,
+                [
+                    {
+                        "source_id": "src",
+                        "document_index": 0,
+                        "file": "docs/intro.md",
+                        "heading": "Intro",
+                        "heading_path": ["Intro"],
+                        "match_chunk_indexes": [0],
+                    }
+                ],
+            )
+            load_docset_config_mock.assert_called_once_with(Path("configs/docsets/sample.yaml"))
+            resolve_run_id_mock.assert_called_once_with(connection, source_id="sample")
+            search_mock.assert_called_once_with(
+                connection,
+                query="How?",
+                source_id="sample",
+                run_id=run_id,
+                limit=3,
+                max_section_chars=None,
+            )
+            format_mock.assert_called_once_with([section], connection=connection, run_id=run_id)
+
     def test_build_qa_prompt(self) -> None:
         prompt = build_qa_prompt("What is it?", "Context text")
         self.assertIn("Context text", prompt)

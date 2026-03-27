@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 from docemoria.chunk_search import ChunkSectionResult, search_persisted_chunk_sections
 from docemoria.config import ConfigError, load_docset_config
@@ -98,6 +99,21 @@ def format_context(
     
     return "\n\n---\n\n".join(context_parts)
 
+
+def format_sources(sections: list[ChunkSectionResult]) -> list[dict[str, Any]]:
+    """Build compact, structured source references from retrieved QA sections."""
+    return [
+        {
+            "source_id": section.source_id,
+            "document_index": section.document_index,
+            "file": section.repo_relative_path,
+            "heading": section.heading_title,
+            "heading_path": None if section.heading_path is None else list(section.heading_path),
+            "match_chunk_indexes": list(section.match_chunk_indexes),
+        }
+        for section in sections
+    ]
+
 def build_qa_prompt(query: str, context: str, system_prompt: str = "") -> str:
     """Construct the final RAG prompt."""
     base_prompt = (
@@ -116,8 +132,9 @@ def perform_qa(
     query: str,
     db_path: Path = Path(DEFAULT_DB_PATH),
     run_id: int | None = None,
-    verbose: bool = False
-) -> str:
+    verbose: bool = False,
+    include_sources: bool = False,
+) -> str | tuple[str, list[dict[str, Any]]]:
     """Execute the RAG QA flow."""
     # 1. Load config
     config = load_docset_config(config_path)
@@ -160,7 +177,10 @@ def perform_qa(
         print(prompt)
         print("\n--- END PROMPT ---\n")
         
-    return provider.generate(prompt)
+    answer = provider.generate(prompt)
+    if include_sources:
+        return answer, format_sources(sections)
+    return answer
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="docemoria-qa")

@@ -1021,6 +1021,81 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["group_count"], 1)
         self.assertEqual(payload["groups"][0]["match_chunk_indexes"], [1])
 
+    def test_ask_prints_plain_answer_by_default(self) -> None:
+        stdout = io.StringIO()
+        config_path = Path("configs/docsets/sample.yaml")
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "ask",
+                str(config_path),
+                "What?",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+            ],
+        ), patch(
+            "docemoria.cli.perform_qa",
+            return_value="answer",
+        ) as perform_qa_mock:
+            exit_code = cli.main()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue().strip(), "answer")
+        perform_qa_mock.assert_called_once_with(
+            config_path,
+            "What?",
+            db_path=Path("./tmp/docemoria.duckdb"),
+            run_id=None,
+            verbose=False,
+            include_sources=False,
+        )
+
+    def test_ask_prints_answer_and_structured_sources_with_flag(self) -> None:
+        stdout = io.StringIO()
+        config_path = Path("configs/docsets/sample.yaml")
+        sources = [
+            {
+                "source_id": "src",
+                "document_index": 0,
+                "file": "docs/intro.md",
+                "heading": "Intro",
+                "heading_path": ["Intro"],
+                "match_chunk_indexes": [0],
+            }
+        ]
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "ask",
+                str(config_path),
+                "What?",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+                "--with-sources",
+            ],
+        ), patch(
+            "docemoria.cli.perform_qa",
+            return_value=("answer", sources),
+        ) as perform_qa_mock:
+            exit_code = cli.main()
+
+        lines = stdout.getvalue().splitlines()
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(lines[0], "answer")
+        self.assertEqual(json.loads(lines[1]), {"sources": sources})
+        perform_qa_mock.assert_called_once_with(
+            config_path,
+            "What?",
+            db_path=Path("./tmp/docemoria.duckdb"),
+            run_id=None,
+            verbose=False,
+            include_sources=True,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
