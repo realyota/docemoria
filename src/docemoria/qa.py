@@ -114,8 +114,16 @@ def format_sources(sections: list[ChunkSectionResult]) -> list[dict[str, Any]]:
         for section in sections
     ]
 
-def build_qa_prompt(query: str, context: str, system_prompt: str = "") -> str:
+def build_qa_prompt(query: str, context: str, system_prompt: str = "", qa_style: str = "") -> str:
     """Construct the final RAG prompt."""
+    system_parts: list[str] = []
+    if system_prompt:
+        system_parts.append(system_prompt)
+    if qa_style:
+        system_parts.append(qa_style)
+
+    system_header = "\n\n".join(system_parts)
+
     base_prompt = (
         "Use the following documentation snippets to answer the user's question.\n"
         "If the answer is not in the documentation, say you don't know.\n\n"
@@ -123,8 +131,8 @@ def build_qa_prompt(query: str, context: str, system_prompt: str = "") -> str:
         f"Question: {query}\n"
         "Answer:"
     )
-    if system_prompt:
-        return f"{system_prompt}\n\n{base_prompt}"
+    if system_header:
+        return f"{system_header}\n\n{base_prompt}"
     return base_prompt
 
 def perform_qa(
@@ -168,7 +176,12 @@ def perform_qa(
     provider = OpenAIGenerationProvider(model=gen_config.model)
     
     # 4. Generate Answer
-    prompt = build_qa_prompt(query, context_text, system_prompt=config.prompts.system)
+    prompt = build_qa_prompt(
+        query,
+        context_text,
+        system_prompt=config.prompts.system,
+        qa_style=config.prompts.qa_style,
+    )
     
     if verbose:
         print("\n--- CONTEXT ---")

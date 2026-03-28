@@ -85,7 +85,7 @@ class TestQA(unittest.TestCase):
             source_id="sample",
             retrieval=SimpleNamespace(top_k=3, max_section_chars=None),
             providers=SimpleNamespace(generation=SimpleNamespace(provider="openai", model="gpt-5.4")),
-            prompts=SimpleNamespace(system=""),
+            prompts=SimpleNamespace(system="Docset-level guidance.", qa_style="Concise answer style."),
         )
 
         with patch("docemoria.qa.open_database", return_value=connection), patch(
@@ -101,6 +101,11 @@ class TestQA(unittest.TestCase):
             "docemoria.qa.format_context",
             return_value="Context",
         ) as format_mock, patch("docemoria.qa.OpenAIGenerationProvider") as provider_class:
+            build_prompt_mock = patch("docemoria.qa.build_qa_prompt")
+            build_prompt = build_prompt_mock.start()
+            build_prompt.return_value = "Built prompt"
+            self.addCleanup(build_prompt_mock.stop)
+
             provider = MagicMock()
             provider.generate.return_value = "answer"
             provider_class.return_value = provider
@@ -119,6 +124,12 @@ class TestQA(unittest.TestCase):
                 max_section_chars=None,
             )
             format_mock.assert_called_once_with([section], connection=connection, run_id=run_id)
+            build_prompt.assert_called_once_with(
+                "How?",
+                "Context",
+                system_prompt="Docset-level guidance.",
+                qa_style="Concise answer style.",
+            )
 
     def test_perform_qa_can_return_structured_sources(self) -> None:
         connection = MagicMock()
@@ -130,7 +141,7 @@ class TestQA(unittest.TestCase):
             source_id="sample",
             retrieval=SimpleNamespace(top_k=3, max_section_chars=None),
             providers=SimpleNamespace(generation=SimpleNamespace(provider="openai", model="gpt-5.4")),
-            prompts=SimpleNamespace(system=""),
+            prompts=SimpleNamespace(system="", qa_style=""),
         )
 
         with patch("docemoria.qa.open_database", return_value=connection), patch(
@@ -192,6 +203,12 @@ class TestQA(unittest.TestCase):
     def test_build_qa_prompt_with_system(self) -> None:
         prompt = build_qa_prompt("Q", "C", system_prompt="Be a robot.")
         self.assertTrue(prompt.startswith("Be a robot."))
+
+    def test_build_qa_prompt_with_system_and_qa_style(self) -> None:
+        prompt = build_qa_prompt("Q", "C", system_prompt="System guidance.", qa_style="Answer briefly.")
+        self.assertIn("System guidance.", prompt)
+        self.assertIn("Answer briefly.", prompt)
+        self.assertTrue(prompt.index("System guidance.") < prompt.index("Answer briefly."))
 
 
 if __name__ == "__main__":

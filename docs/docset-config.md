@@ -50,7 +50,7 @@ See `configs/docsets/example.yaml`.
 - `ingest.exclude_globs`: glob patterns to skip during ingest, defaults to `[]`
 - `prompts.system`
 - `prompts.notes_style`
-- `prompts.qa_style`: task-specific guidance for future documentation Q&A flows
+- `prompts.qa_style`: task-specific guidance for LLM + RAG question-answering
 - `prompts.compression_style`: task-specific guidance for future compressed knowledge artifact generation
 - `providers.embeddings.provider`
 - `providers.embeddings.model`
@@ -98,7 +98,7 @@ The `prompts` section is intentionally split so a docset can steer different dow
 
 - `system`: broad, docset-level behavior shared across generation tasks
 - `notes_style`: style guidance for learning notes and review-oriented outputs
-- `qa_style`: answer-shaping guidance for future LLM + RAG question-answering
+- `qa_style`: answer-shaping guidance for LLM + RAG question-answering
 - `compression_style`: distillation guidance for future compressed knowledge artifacts
 
 All prompt fields are optional and default to empty strings, so existing configs remain valid.
