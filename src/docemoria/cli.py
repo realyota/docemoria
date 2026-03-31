@@ -269,6 +269,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional ingest run_id filter",
     )
     qa_parser.add_argument(
+        "--max-context-chars",
+        type=int,
+        help="Optional max total context characters passed to the QA prompt",
+    )
+    qa_parser.add_argument(
         "--verbose",
         action="store_true",
         help="Print retrieved context and final prompt",
@@ -633,6 +638,7 @@ def main() -> int:
                 args.query,
                 db_path=Path(args.db_path),
                 run_id=args.run_id,
+                max_context_chars=args.max_context_chars,
                 verbose=args.verbose,
                 include_sources=args.with_sources,
             )

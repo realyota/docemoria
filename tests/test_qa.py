@@ -64,6 +64,13 @@ class TestQA(unittest.TestCase):
         self.assertNotIn("Global Context:", formatted)
         self.assertNotIn("Summary:", formatted)
 
+    def test_format_context_can_be_truncated(self) -> None:
+        section = self._section()
+        section.chunks[0].content = "A" * 120
+        formatted = format_context([section], max_context_chars=80)
+        self.assertLessEqual(len(formatted), 80)
+        self.assertIn("[Context truncated to keep the prompt compact.]", formatted)
+
     def test_format_context_includes_run_and_document_summaries_when_available(self) -> None:
         connection = FakeConnection()
 
@@ -123,7 +130,12 @@ class TestQA(unittest.TestCase):
                 limit=3,
                 max_section_chars=None,
             )
-            format_mock.assert_called_once_with([section], connection=connection, run_id=run_id)
+            format_mock.assert_called_once_with(
+                [section],
+                connection=connection,
+                run_id=run_id,
+                max_context_chars=None,
+            )
             build_prompt.assert_called_once_with(
                 "How?",
                 "Context",
@@ -192,7 +204,12 @@ class TestQA(unittest.TestCase):
                 limit=3,
                 max_section_chars=None,
             )
-            format_mock.assert_called_once_with([section], connection=connection, run_id=run_id)
+            format_mock.assert_called_once_with(
+                [section],
+                connection=connection,
+                run_id=run_id,
+                max_context_chars=None,
+            )
 
     def test_build_qa_prompt(self) -> None:
         prompt = build_qa_prompt("What is it?", "Context text")

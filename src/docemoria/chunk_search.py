@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 from .storage import StorageError
@@ -75,6 +76,17 @@ def _parse_heading_path(value: object) -> list[str] | None:
     if not isinstance(parsed, list):
         return [str(parsed)]
     return [str(part) for part in parsed]
+
+
+def _derive_query_terms(query_text: str) -> list[str]:
+    terms = re.findall(r"[a-z0-9][a-z0-9'_-]*", query_text.lower())
+    if not terms:
+        return [query_text.lower()]
+    return list(dict.fromkeys(terms))
+
+
+def _build_contains_expression(columns: list[str]) -> str:
+    return "(" + " OR ".join(f"strpos({column}, lower(?)) > 0" for column in columns) + ")"
 
 
 def _map_chunk_search_result_row(row: tuple[object, ...]) -> ChunkSearchResult:
@@ -173,8 +185,26 @@ def search_persisted_chunks(
     if limit < 1:
         raise StorageError("Limit must be greater than 0")
 
-    filters = ["strpos(lower(content), lower(?)) > 0"]
-    params: list[object] = [query_text]
+    search_columns = [
+        "lower(content)",
+        "coalesce(lower(document_title), '')",
+        "coalesce(lower(heading_title), '')",
+        "coalesce(lower(heading_path), '')",
+    ]
+    exact_match_expression = _build_contains_expression(search_columns)
+    query_terms = _derive_query_terms(query_text)
+    filters: list[str] = ["TRUE"]
+
+    if len(query_terms) > 1:
+        token_match_expression = " OR ".join(_build_contains_expression(search_columns) for _ in query_terms)
+    else:
+        token_match_expression = "FALSE"
+
+    params: list[object] = [query_text] * len(search_columns)
+
+    if len(query_terms) > 1:
+        for term in query_terms:
+            params.extend([term] * len(search_columns))
 
     if source_id is not None:
         source_id_text = source_id.strip()
@@ -193,6 +223,23 @@ def search_persisted_chunks(
     try:
         rows = connection.execute(
             f"""
+            WITH candidate_chunks AS (
+                SELECT
+                    run_id,
+                    source_id,
+                    document_index,
+                    chunk_index,
+                    repo_relative_path,
+                    document_title,
+                    heading_title,
+                    heading_path,
+                    character_count,
+                    content,
+                    ({exact_match_expression}) AS is_exact_match,
+                    ({token_match_expression}) AS is_token_match
+                FROM chunks
+                WHERE {where_clause}
+            )
             SELECT
                 run_id,
                 source_id,
@@ -204,9 +251,9 @@ def search_persisted_chunks(
                 heading_path,
                 character_count,
                 content
-            FROM chunks
-            WHERE {where_clause}
-            ORDER BY run_id DESC, source_id ASC, document_index ASC, chunk_index ASC
+            FROM candidate_chunks
+            WHERE is_exact_match OR is_token_match
+            ORDER BY CAST(is_exact_match AS INTEGER) DESC, run_id DESC, source_id ASC, document_index ASC, chunk_index ASC
             LIMIT ?
             """,
             params,

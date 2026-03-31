@@ -13,6 +13,8 @@ from docemoria.storage import StorageError, open_database
 
 DEFAULT_DB_PATH = "docemoria.db"
 
+_CONTEXT_TRUNCATION_NOTE = "\n\n[Context truncated to keep the prompt compact.]"
+
 def _load_document_summaries(
     connection: "duckdb.DuckDBPyConnection",
     sections: list[ChunkSectionResult],
@@ -72,11 +74,29 @@ def _load_run_summary(
     return str(row[0])
 
 
+def _truncate_context(context_text: str, max_context_chars: int | None) -> str:
+    if max_context_chars is None:
+        return context_text
+
+    if max_context_chars <= 0:
+        raise ValueError("max_context_chars must be greater than 0 when provided")
+
+    if len(context_text) <= max_context_chars:
+        return context_text
+
+    if max_context_chars <= len(_CONTEXT_TRUNCATION_NOTE):
+        return context_text[:max_context_chars]
+
+    cut_after = max_context_chars - len(_CONTEXT_TRUNCATION_NOTE)
+    return context_text[:cut_after] + _CONTEXT_TRUNCATION_NOTE
+
+
 def format_context(
     sections: list[ChunkSectionResult],
     *,
     connection: "duckdb.DuckDBPyConnection | None" = None,
     run_id: int | None = None,
+    max_context_chars: int | None = None,
 ) -> str:
     """Format retrieved sections into a context string for the LLM."""
     relevant_run_id = run_id
@@ -97,7 +117,7 @@ def format_context(
         content = "\n".join(chunk.content for chunk in section.chunks)
         context_parts.append(f"File: {file_path}\n{summary_line}{heading}\n{content}")
     
-    return "\n\n---\n\n".join(context_parts)
+    return _truncate_context("\n\n---\n\n".join(context_parts), max_context_chars=max_context_chars)
 
 
 def format_sources(sections: list[ChunkSectionResult]) -> list[dict[str, Any]]:
@@ -140,6 +160,7 @@ def perform_qa(
     query: str,
     db_path: Path = Path(DEFAULT_DB_PATH),
     run_id: int | None = None,
+    max_context_chars: int | None = None,
     verbose: bool = False,
     include_sources: bool = False,
 ) -> str | tuple[str, list[dict[str, Any]]]:
@@ -160,7 +181,12 @@ def perform_qa(
             limit=config.retrieval.top_k,
             max_section_chars=config.retrieval.max_section_chars
         )
-        context_text = format_context(sections, connection=conn, run_id=resolved_run_id)
+        context_text = format_context(
+            sections,
+            connection=conn,
+            run_id=resolved_run_id,
+            max_context_chars=max_context_chars,
+        )
 
     if not sections:
         return "No relevant documentation found for the given query."
