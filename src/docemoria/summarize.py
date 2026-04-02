@@ -67,6 +67,34 @@ def summarize_run_global(
     except Exception as exc:
         raise ValueError("Could not load document summaries for global summarization") from exc
 
+    try:
+        existing_run_cursor = connection.execute(
+            """
+            SELECT summary, summary_input_checksum
+            FROM ingest_runs
+            WHERE run_id = ?
+            """,
+            [run_id],
+        )
+    except Exception as exc:
+        raise ValueError("Could not load existing run summary metadata") from exc
+
+    existing_run_rows: list[tuple[object, ...]]
+    if hasattr(existing_run_cursor, "fetchone"):
+        existing_run_state = existing_run_cursor.fetchone()
+        if existing_run_state is not None:
+            existing_run_rows = [existing_run_state]
+        else:
+            existing_run_rows = []
+    else:  # pragma: no cover - compatibility with minimal cursor stubs
+        existing_run_rows = existing_run_cursor.fetchall()
+
+    existing_summary_checksum = None
+    if existing_run_rows:
+        first_row = existing_run_rows[0]
+        if first_row[1] is not None:
+            existing_summary_checksum = str(first_row[1])
+
     document_summaries = [
         str(row[0]).strip()
         for row in rows
@@ -80,13 +108,22 @@ def summarize_run_global(
             connection.execute(
                 """
                 UPDATE ingest_runs
-                SET summary = NULL
+                SET summary = NULL, summary_input_checksum = NULL
                 WHERE run_id = ?
                 """,
                 [run_id],
             )
         except Exception as exc:
             raise ValueError("Could not persist run-level summary") from exc
+        return
+
+    summary_input_checksum = _build_run_summary_checksum(
+        compression_style=compression_style,
+        document_summaries=document_summaries,
+    )
+    if existing_summary_checksum == summary_input_checksum:
+        if verbose:
+            print(f"Skipping run-level summary for run_id={run_id}: input unchanged")
         return
 
     prompt = (
@@ -102,13 +139,21 @@ def summarize_run_global(
         connection.execute(
             """
             UPDATE ingest_runs
-            SET summary = ?
+            SET summary = ?, summary_input_checksum = ?
             WHERE run_id = ?
             """,
-            [generated_summary, run_id],
+            [generated_summary, summary_input_checksum, run_id],
         )
     except Exception as exc:
         raise ValueError("Could not persist run-level summary") from exc
+
+
+def _build_run_summary_checksum(
+    compression_style: str,
+    document_summaries: list[str],
+) -> str:
+    payload = f"{compression_style}\n\n{'\n\n'.join(document_summaries)}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _summarize_documents(
