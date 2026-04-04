@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 from docemoria.chunk_search import ChunkContextChunk, ChunkSectionResult
 from docemoria.qa import build_qa_prompt, format_context, perform_qa
+from docemoria.providers.generation import GenerationError
 
 
 class FakeCursor:
@@ -210,6 +211,80 @@ class TestQA(unittest.TestCase):
                 run_id=run_id,
                 max_context_chars=None,
             )
+
+    def test_perform_qa_respects_top_k_override(self) -> None:
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+        run_id = 9
+        section = self._section(run_id=run_id)
+        fake_config = SimpleNamespace(
+            source_id="sample",
+            retrieval=SimpleNamespace(top_k=3, max_section_chars=None),
+            providers=SimpleNamespace(generation=SimpleNamespace(provider="openai", model="gpt-5.4")),
+            prompts=SimpleNamespace(system="", qa_style=""),
+        )
+
+        with patch("docemoria.qa.open_database", return_value=connection), patch(
+            "docemoria.qa.load_docset_config",
+            return_value=fake_config,
+        ), patch(
+            "docemoria.qa.resolve_latest_successful_run_id",
+            return_value=run_id,
+        ), patch(
+            "docemoria.qa.search_persisted_chunk_sections",
+            return_value=[section],
+        ) as search_mock, patch("docemoria.qa.format_context", return_value="Context"), patch(
+            "docemoria.qa.OpenAIGenerationProvider"
+        ) as provider_class:
+            provider = MagicMock()
+            provider.generate.return_value = "answer"
+            provider_class.return_value = provider
+
+            perform_qa(
+                Path("configs/docsets/sample.yaml"),
+                "How?",
+                db_path=Path("/tmp/docemoria.duckdb"),
+                top_k=1,
+            )
+
+            search_mock.assert_called_once_with(
+                connection,
+                query="How?",
+                source_id="sample",
+                run_id=run_id,
+                limit=1,
+                max_section_chars=None,
+            )
+
+    def test_perform_qa_raises_generation_error_from_provider(self) -> None:
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+        run_id = 9
+        section = self._section(run_id=run_id)
+        fake_config = SimpleNamespace(
+            source_id="sample",
+            retrieval=SimpleNamespace(top_k=3, max_section_chars=None),
+            providers=SimpleNamespace(generation=SimpleNamespace(provider="openai", model="gpt-5.4")),
+            prompts=SimpleNamespace(system="Docset-level guidance.", qa_style="Concise answer style."),
+        )
+
+        with patch("docemoria.qa.open_database", return_value=connection), patch(
+            "docemoria.qa.load_docset_config",
+            return_value=fake_config,
+        ), patch("docemoria.qa.resolve_latest_successful_run_id", return_value=run_id), patch(
+            "docemoria.qa.search_persisted_chunk_sections",
+            return_value=[section],
+        ), patch("docemoria.qa.format_context", return_value="Context"), patch(
+            "docemoria.qa.OpenAIGenerationProvider",
+        ) as provider_class:
+            provider = MagicMock()
+            provider.generate.side_effect = GenerationError("provider unavailable")
+            provider_class.return_value = provider
+
+            with self.assertRaisesRegex(GenerationError, "provider unavailable"):
+                perform_qa(Path("configs/docsets/sample.yaml"), "How?", db_path=Path("/tmp/docemoria.duckdb"))
 
     def test_build_qa_prompt(self) -> None:
         prompt = build_qa_prompt("What is it?", "Context text")

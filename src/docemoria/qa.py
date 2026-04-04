@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 from typing import Any
+from docemoria.providers.generation import GenerationError
 
 from docemoria.chunk_search import ChunkSectionResult, search_persisted_chunk_sections
 from docemoria.config import ConfigError, load_docset_config
@@ -160,6 +161,7 @@ def perform_qa(
     query: str,
     db_path: Path = Path(DEFAULT_DB_PATH),
     run_id: int | None = None,
+    top_k: int | None = None,
     max_context_chars: int | None = None,
     verbose: bool = False,
     include_sources: bool = False,
@@ -167,6 +169,12 @@ def perform_qa(
     """Execute the RAG QA flow."""
     # 1. Load config
     config = load_docset_config(config_path)
+
+    retrieval_top_k = config.retrieval.top_k
+    if top_k is not None:
+        if top_k < 1:
+            raise ValueError("top_k must be greater than 0 when provided")
+        retrieval_top_k = top_k
     
     # 2. Retrieve relevant context
     with open_database(db_path) as conn:
@@ -178,7 +186,7 @@ def perform_qa(
             query=query,
             source_id=config.source_id,
             run_id=resolved_run_id,
-            limit=config.retrieval.top_k,
+            limit=retrieval_top_k,
             max_section_chars=config.retrieval.max_section_chars
         )
         context_text = format_context(
@@ -255,6 +263,9 @@ def main() -> int:
         return 0
     except (ConfigError, StorageError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    except GenerationError as exc:
+        print(f"Generation failed: {exc}", file=sys.stderr)
         return 1
     except Exception as exc:
         print(f"Unexpected error: {exc}", file=sys.stderr)

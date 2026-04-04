@@ -22,6 +22,7 @@ from .document_loading import DocumentLoadingError, SourceDocument, load_documen
 from .ingest import DEFAULT_DB_PATH, ingest_docset
 from .ingest_results import fetch_ingest_run_summary, fetch_recent_ingest_runs
 from .qa import perform_qa
+from .providers.generation import GenerationError
 from .storage import StorageError, initialize_schema, open_database
 from .summarize import summarize_run
 
@@ -272,6 +273,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-context-chars",
         type=int,
         help="Optional max total context characters passed to the QA prompt",
+    )
+    qa_parser.add_argument(
+        "--top-k",
+        type=int,
+        help="Optional override for number of retrieval sections (default: docset retrieval.top_k)",
     )
     qa_parser.add_argument(
         "--verbose",
@@ -633,14 +639,20 @@ def main() -> int:
             return 0
 
         if args.command == "ask":
+            qa_kwargs = {
+                "run_id": args.run_id,
+                "max_context_chars": args.max_context_chars,
+                "verbose": args.verbose,
+                "include_sources": args.with_sources,
+            }
+            if args.top_k is not None:
+                qa_kwargs["top_k"] = args.top_k
+
             result = perform_qa(
                 Path(args.config_path),
                 args.query,
                 db_path=Path(args.db_path),
-                run_id=args.run_id,
-                max_context_chars=args.max_context_chars,
-                verbose=args.verbose,
-                include_sources=args.with_sources,
+                **qa_kwargs,
             )
             if args.with_sources and isinstance(result, tuple):
                 answer, sources = result
@@ -659,6 +671,9 @@ def main() -> int:
 
         parser.error(f"Unsupported command: {args.command}")
         return 2
+    except GenerationError as exc:
+        print(f"Generation failed: {exc}", file=sys.stderr)
+        return 1
     except (ChunkingError, ConfigError, DiscoveryError, DocumentLoadingError, StorageError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

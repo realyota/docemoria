@@ -11,6 +11,7 @@ from docemoria.chunk_search import ChunkContextChunk, ChunkContextResult, ChunkS
 from docemoria.config import DocsetConfig, RetrievalConfig
 from docemoria.ingest import IngestResult
 from docemoria.ingest_results import IngestRunSummary
+from docemoria.providers.generation import GenerationError
 
 
 class CliTests(unittest.TestCase):
@@ -1048,6 +1049,42 @@ class CliTests(unittest.TestCase):
             "What?",
             db_path=Path("./tmp/docemoria.duckdb"),
             run_id=None,
+            max_context_chars=None,
+            verbose=False,
+            include_sources=False,
+        )
+
+    def test_ask_passes_top_k_override(self) -> None:
+        stdout = io.StringIO()
+        config_path = Path("configs/docsets/sample.yaml")
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "ask",
+                str(config_path),
+                "What?",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+                "--top-k",
+                "5",
+            ],
+        ), patch(
+            "docemoria.cli.perform_qa",
+            return_value="answer",
+        ) as perform_qa_mock:
+            exit_code = cli.main()
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stdout.getvalue().strip(), "answer")
+        perform_qa_mock.assert_called_once_with(
+            config_path,
+            "What?",
+            db_path=Path("./tmp/docemoria.duckdb"),
+            run_id=None,
+            max_context_chars=None,
+            top_k=5,
             verbose=False,
             include_sources=False,
         )
@@ -1092,8 +1129,43 @@ class CliTests(unittest.TestCase):
             "What?",
             db_path=Path("./tmp/docemoria.duckdb"),
             run_id=None,
+            max_context_chars=None,
             verbose=False,
             include_sources=True,
+        )
+
+    def test_ask_prints_generation_error_message_on_provider_failure(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        config_path = Path("configs/docemoria/sample.yaml")
+
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "ask",
+                str(config_path),
+                "What?",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+            ],
+        ), patch(
+            "docemoria.cli.perform_qa",
+            side_effect=GenerationError("OpenAI unavailable"),
+        ) as perform_qa_mock:
+            exit_code = cli.main()
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertEqual(stderr.getvalue().strip(), "Generation failed: OpenAI unavailable")
+        perform_qa_mock.assert_called_once_with(
+            config_path,
+            "What?",
+            db_path=Path("./tmp/docemoria.duckdb"),
+            run_id=None,
+            max_context_chars=None,
+            verbose=False,
+            include_sources=False,
         )
 
 
