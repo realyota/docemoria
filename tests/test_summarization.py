@@ -1,7 +1,9 @@
+import hashlib
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from docemoria.config import DocsetConfig, PromptConfig, ProviderModelConfig, ProvidersConfig
+from docemoria.providers.generation import GenerationError
 from docemoria.summarize import summarize_run
 
 
@@ -67,12 +69,17 @@ class SummarizationTests(unittest.TestCase):
         with patch("docemoria.summarize.OpenAIGenerationProvider", return_value=fake_provider) as provider_ctor:
             summarize_run(connection, _test_config(), run_id=11)
 
+        expected_run_checksum = hashlib.sha256(
+            "Compact bullets\n\nSummary for call 1\n\nalready there\n\nSummary for call 2".encode("utf-8")
+        ).hexdigest()
+
         self.assertEqual(len(provider_ctor.call_args_list), 1)
         self.assertEqual(connection.calls[0][1], [11])
         self.assertEqual(connection.calls[1][1], ["Summary for call 1", "cs-alpha", 11, 0])
         self.assertEqual(connection.calls[2][1], ["Summary for call 2", "cs-gamma", 11, 2])
         self.assertEqual(connection.calls[3][1], [11])
-        self.assertEqual(connection.calls[4][1], ["Summary for call 3", 11])
+        self.assertEqual(connection.calls[4][1], [11])
+        self.assertEqual(connection.calls[5][1], ["Summary for call 3", expected_run_checksum, 11])
         self.assertEqual(len(fake_provider.calls), 3)
         self.assertIn("Document Content:\nAlpha content", fake_provider.calls[0])
         self.assertIn("Document Content:\nGamma content", fake_provider.calls[1])
@@ -95,6 +102,23 @@ class SummarizationTests(unittest.TestCase):
         self.assertEqual(len(update_calls), 1)
         self.assertEqual(update_calls[0][1], [11])
         self.assertIn("SET summary = NULL", update_calls[0][0])
+
+    def test_summarize_run_propagates_generation_error(self) -> None:
+        connection = FakeConnection(
+            select_rows=[
+                [(0, "Alpha content", "cs-alpha", None, None)],
+            ]
+        )
+        fake_provider = MagicMock()
+        fake_provider.generate.side_effect = GenerationError("OpenAI unavailable")
+
+        with patch("docemoria.summarize.OpenAIGenerationProvider", return_value=fake_provider):
+            with self.assertRaisesRegex(GenerationError, "OpenAI unavailable"):
+                summarize_run(connection, _test_config(), run_id=11)
+
+        self.assertEqual(len(connection.calls), 1)
+        self.assertEqual(connection.calls[0][1], [11])
+        self.assertEqual(len([call for call in connection.calls if call[0].strip().upper().startswith("UPDATE")]), 0)
 
     def test_summarize_run_skips_when_generation_provider_not_configured(self) -> None:
         config = _test_config()
