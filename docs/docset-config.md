@@ -255,3 +255,30 @@ The command:
 - uses `retrieval.top_k` as the match limit,
 - applies `retrieval.context_before_chunks` / `retrieval.context_after_chunks` as sibling window defaults,
 - returns document-grouped chunk neighbor context with `match_chunk_indexes` and per-chunk `is_match` flags.
+
+Ask questions over ingested docs with RAG:
+
+```bash
+PYTHONPATH=src python3 -m docemoria.cli ask configs/docsets/example.yaml "How do I configure auth?"
+```
+
+Default output is plain text answer:
+
+- plain answer only
+
+Request structured output in a single JSON object with `--json`:
+
+```bash
+PYTHONPATH=src python3 -m docemoria.cli ask configs/docsets/example.yaml "How do I configure auth?" --json
+```
+
+With sources enabled, include provenance in the same JSON object:
+
+```bash
+PYTHONPATH=src python3 -m docemoria.cli ask configs/docsets/example.yaml "How do I configure auth?" --with-sources --json
+```
+
+Returned JSON shape:
+
+- `answer`: final answer text
+- `sources`: list of compact source references (only when `--with-sources` is used)

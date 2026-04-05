@@ -289,6 +289,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print structured source references used to build the answer",
     )
+    qa_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print output as a single JSON object",
+    )
 
     summarize_parser = subparsers.add_parser(
         "summarize-run",
@@ -654,7 +659,17 @@ def main() -> int:
                 db_path=Path(args.db_path),
                 **qa_kwargs,
             )
-            if args.with_sources and isinstance(result, tuple):
+            if args.json:
+                if args.with_sources and isinstance(result, tuple):
+                    answer, sources = result
+                    payload = {"answer": answer, "sources": sources}
+                elif isinstance(result, tuple):
+                    answer = result[0]
+                    payload = {"answer": answer}
+                else:
+                    payload = {"answer": result}
+                print(json.dumps(payload, separators=(",", ":")))
+            elif args.with_sources and isinstance(result, tuple):
                 answer, sources = result
                 print(answer)
                 print(json.dumps({"sources": sources}, separators=(",", ":")))

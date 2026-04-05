@@ -1134,6 +1134,85 @@ class CliTests(unittest.TestCase):
             include_sources=True,
         )
 
+    def test_ask_prints_single_json_object_without_sources_with_flag(self) -> None:
+        stdout = io.StringIO()
+        config_path = Path("configs/docsets/sample.yaml")
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "ask",
+                str(config_path),
+                "What?",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+                "--json",
+            ],
+        ), patch(
+            "docemoria.cli.perform_qa",
+            return_value="answer",
+        ) as perform_qa_mock:
+            exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue().strip())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload, {"answer": "answer"})
+        perform_qa_mock.assert_called_once_with(
+            config_path,
+            "What?",
+            db_path=Path("./tmp/docemoria.duckdb"),
+            run_id=None,
+            max_context_chars=None,
+            verbose=False,
+            include_sources=False,
+        )
+
+    def test_ask_prints_single_json_object_with_structured_sources_with_flag(self) -> None:
+        stdout = io.StringIO()
+        config_path = Path("configs/docsets/sample.yaml")
+        sources = [
+            {
+                "source_id": "src",
+                "document_index": 0,
+                "file": "docs/intro.md",
+                "heading": "Intro",
+                "heading_path": ["Intro"],
+                "match_chunk_indexes": [0],
+            }
+        ]
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "ask",
+                str(config_path),
+                "What?",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+                "--with-sources",
+                "--json",
+            ],
+        ), patch(
+            "docemoria.cli.perform_qa",
+            return_value=("answer", sources),
+        ) as perform_qa_mock:
+            exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue().strip())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload, {"answer": "answer", "sources": sources})
+        perform_qa_mock.assert_called_once_with(
+            config_path,
+            "What?",
+            db_path=Path("./tmp/docemoria.duckdb"),
+            run_id=None,
+            max_context_chars=None,
+            verbose=False,
+            include_sources=True,
+        )
+
     def test_ask_prints_generation_error_message_on_provider_failure(self) -> None:
         stdout = io.StringIO()
         stderr = io.StringIO()
