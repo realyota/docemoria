@@ -3,6 +3,7 @@ import io
 import json
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -1148,7 +1149,12 @@ class CliTests(unittest.TestCase):
                 "--db-path",
                 "./tmp/docemoria.duckdb",
                 "--json",
+                "--run-id",
+                "7",
             ],
+        ), patch(
+            "docemoria.cli.load_docset_config",
+            return_value=SimpleNamespace(source_id="sample", label="Sample Docs"),
         ), patch(
             "docemoria.cli.perform_qa",
             return_value="answer",
@@ -1157,12 +1163,18 @@ class CliTests(unittest.TestCase):
 
         payload = json.loads(stdout.getvalue().strip())
         self.assertEqual(exit_code, 0)
-        self.assertEqual(payload, {"answer": "answer"})
+        self.assertEqual(
+            payload,
+            {
+                "answer": "answer",
+                "metadata": {"run_id": 7, "docset": {"source_id": "sample", "label": "Sample Docs"}},
+            },
+        )
         perform_qa_mock.assert_called_once_with(
             config_path,
             "What?",
             db_path=Path("./tmp/docemoria.duckdb"),
-            run_id=None,
+            run_id=7,
             max_context_chars=None,
             verbose=False,
             include_sources=False,
@@ -1193,7 +1205,12 @@ class CliTests(unittest.TestCase):
                 "./tmp/docemoria.duckdb",
                 "--with-sources",
                 "--json",
+                "--run-id",
+                "7",
             ],
+        ), patch(
+            "docemoria.cli.load_docset_config",
+            return_value=SimpleNamespace(source_id="sample", label="Sample Docs"),
         ), patch(
             "docemoria.cli.perform_qa",
             return_value=("answer", sources),
@@ -1202,15 +1219,79 @@ class CliTests(unittest.TestCase):
 
         payload = json.loads(stdout.getvalue().strip())
         self.assertEqual(exit_code, 0)
-        self.assertEqual(payload, {"answer": "answer", "sources": sources})
+        self.assertEqual(
+            payload,
+            {
+                "answer": "answer",
+                "sources": sources,
+                "metadata": {"run_id": 7, "docset": {"source_id": "sample", "label": "Sample Docs"}},
+            },
+        )
         perform_qa_mock.assert_called_once_with(
             config_path,
             "What?",
             db_path=Path("./tmp/docemoria.duckdb"),
-            run_id=None,
+            run_id=7,
             max_context_chars=None,
             verbose=False,
             include_sources=True,
+        )
+
+    def test_ask_json_resolves_latest_run_id_for_metadata(self) -> None:
+        stdout = io.StringIO()
+        config_path = Path("configs/docsets/sample.yaml")
+        connection = MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = None
+
+        with contextlib.redirect_stdout(stdout), patch(
+            "sys.argv",
+            [
+                "docemoria",
+                "ask",
+                str(config_path),
+                "What?",
+                "--db-path",
+                "./tmp/docemoria.duckdb",
+                "--json",
+            ],
+        ), patch(
+            "docemoria.cli.load_docset_config",
+            return_value=SimpleNamespace(source_id="sample", label="Sample Docs"),
+        ), patch(
+            "docemoria.cli.open_database",
+            return_value=connection,
+        ) as open_database_mock, patch(
+            "docemoria.cli.initialize_schema"
+        ) as initialize_schema_mock, patch(
+            "docemoria.cli.resolve_latest_successful_run_id",
+            return_value=42,
+        ) as resolve_run_id_mock, patch(
+            "docemoria.cli.perform_qa",
+            return_value="answer",
+        ) as perform_qa_mock:
+            exit_code = cli.main()
+
+        payload = json.loads(stdout.getvalue().strip())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            payload,
+            {
+                "answer": "answer",
+                "metadata": {"run_id": 42, "docset": {"source_id": "sample", "label": "Sample Docs"}},
+            },
+        )
+        open_database_mock.assert_called_once_with(Path("./tmp/docemoria.duckdb"))
+        initialize_schema_mock.assert_called_once_with(connection)
+        resolve_run_id_mock.assert_called_once_with(connection, source_id="sample")
+        perform_qa_mock.assert_called_once_with(
+            config_path,
+            "What?",
+            db_path=Path("./tmp/docemoria.duckdb"),
+            run_id=42,
+            max_context_chars=None,
+            verbose=False,
+            include_sources=False,
         )
 
     def test_ask_prints_generation_error_message_on_provider_failure(self) -> None:

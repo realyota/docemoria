@@ -20,7 +20,11 @@ from .config import ConfigError, load_docset_config, load_docset_configs
 from .discovery import DiscoveryError, discover_docset_files, resolve_docset_repo_path
 from .document_loading import DocumentLoadingError, SourceDocument, load_documents
 from .ingest import DEFAULT_DB_PATH, ingest_docset
-from .ingest_results import fetch_ingest_run_summary, fetch_recent_ingest_runs
+from .ingest_results import (
+    fetch_ingest_run_summary,
+    fetch_recent_ingest_runs,
+    resolve_latest_successful_run_id,
+)
 from .qa import perform_qa
 from .providers.generation import GenerationError
 from .storage import StorageError, initialize_schema, open_database
@@ -644,6 +648,22 @@ def main() -> int:
             return 0
 
         if args.command == "ask":
+            resolved_run_id = args.run_id
+            metadata = None
+            if args.json:
+                config = load_docset_config(Path(args.config_path))
+                if resolved_run_id is None:
+                    with open_database(Path(args.db_path)) as connection:
+                        initialize_schema(connection)
+                        resolved_run_id = resolve_latest_successful_run_id(connection, source_id=config.source_id)
+                metadata = {
+                    "run_id": resolved_run_id,
+                    "docset": {
+                        "source_id": config.source_id,
+                        "label": config.label,
+                    },
+                }
+
             qa_kwargs = {
                 "run_id": args.run_id,
                 "max_context_chars": args.max_context_chars,
@@ -652,6 +672,8 @@ def main() -> int:
             }
             if args.top_k is not None:
                 qa_kwargs["top_k"] = args.top_k
+            if args.json:
+                qa_kwargs["run_id"] = resolved_run_id
 
             result = perform_qa(
                 Path(args.config_path),
@@ -662,12 +684,12 @@ def main() -> int:
             if args.json:
                 if args.with_sources and isinstance(result, tuple):
                     answer, sources = result
-                    payload = {"answer": answer, "sources": sources}
+                    payload = {"answer": answer, "sources": sources, "metadata": metadata}
                 elif isinstance(result, tuple):
                     answer = result[0]
-                    payload = {"answer": answer}
+                    payload = {"answer": answer, "metadata": metadata}
                 else:
-                    payload = {"answer": result}
+                    payload = {"answer": result, "metadata": metadata}
                 print(json.dumps(payload, separators=(",", ":")))
             elif args.with_sources and isinstance(result, tuple):
                 answer, sources = result

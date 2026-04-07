@@ -282,3 +282,7 @@ Returned JSON shape:
 
 - `answer`: final answer text
 - `sources`: list of compact source references (only when `--with-sources` is used)
+- `metadata`: compact provenance object (present for all `--json` outputs):
+  - `run_id`: resolved ingest run used for retrieval
+  - `docset.source_id`: docset identifier used for the query
+  - `docset.label`: human-readable docset label
