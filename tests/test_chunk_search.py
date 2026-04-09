@@ -56,11 +56,9 @@ class ChunkSearchTests(unittest.TestCase):
         self.assertEqual(matches[0].heading_path, ["Intro", "Details"])
         call_params = connection.calls[0][1]
         self.assertEqual(call_params[0], "needle")
-        self.assertEqual(call_params[4], "sample")
-        self.assertEqual(call_params[5], 11)
+        self.assertEqual(call_params[-3:], ["sample", 11, 3])
         self.assertEqual(call_params[-1], 3)
-        self.assertEqual(len(call_params), 7)
-        self.assertEqual(call_params.count("needle"), 4)
+        self.assertEqual(call_params.count("needle"), 8)
 
     def test_search_persisted_chunks_matches_on_query_terms_and_metadata(self) -> None:
         class FakeCursor:
@@ -109,9 +107,71 @@ class ChunkSearchTests(unittest.TestCase):
         self.assertIn("coalesce(lower(heading_title), '')", connection.calls[0][0])
         self.assertIn("coalesce(lower(heading_path), '')", connection.calls[0][0])
         call_params = connection.calls[0][1]
-        self.assertEqual(call_params.count("install"), 4)
-        self.assertEqual(call_params.count("guide"), 4)
-        self.assertEqual(call_params.count("Install guide"), 4)
+        self.assertEqual(call_params.count("install"), 5)
+        self.assertEqual(call_params.count("guide"), 5)
+        self.assertEqual(call_params.count("Install guide"), 7)
+
+    def test_search_persisted_chunks_ranks_with_relevance_score(self) -> None:
+        class FakeCursor:
+            def __init__(self, rows: list[tuple[object, ...]]) -> None:
+                self._rows = rows
+
+            def fetchall(self) -> list[tuple[object, ...]]:
+                return self._rows
+
+        class FakeConnection:
+            def __init__(self, rows: list[tuple[object, ...]]) -> None:
+                self.rows = rows
+                self.calls: list[tuple[str, list[object]]] = []
+
+            def execute(self, query: str, params: list[object]) -> FakeCursor:
+                self.calls.append((query, params))
+                return FakeCursor(self.rows)
+
+        connection = FakeConnection(
+            [
+                (
+                    11,
+                    "sample",
+                    0,
+                    2,
+                    "docs/install.md",
+                    "Installation Guide",
+                    "Getting started",
+                    '["Setup", "Getting started"]',
+                    44,
+                    "Installation instructions and requirements.",
+                ),
+                (
+                    11,
+                    "sample",
+                    0,
+                    3,
+                    "docs/install.md",
+                    "Troubleshooting",
+                    "Overview",
+                    '["Troubleshooting", "Overview"]',
+                    40,
+                    "The installer can be retried after downloading.",
+                ),
+            ]
+        )
+
+        matches = search_persisted_chunks(
+            connection,  # type: ignore[arg-type]
+            query="installation guide",
+            source_id="sample",
+            run_id=11,
+            limit=2,
+        )
+
+        self.assertEqual(len(matches), 2)
+        query_sql, query_params = connection.calls[0]
+        self.assertIn("match_score", query_sql)
+        self.assertIn("CAST(is_exact_match AS INTEGER) * 100", query_sql)
+        self.assertIn("ORDER BY match_score DESC", query_sql)
+        self.assertEqual(query_params[-3:], ["sample", 11, 2])
+        self.assertEqual(query_params.count("installation guide"), 7)
 
     def test_search_persisted_chunks_parses_non_json_heading_path_as_single_value(self) -> None:
         class FakeCursor:
@@ -211,8 +271,8 @@ class ChunkSearchTests(unittest.TestCase):
 
         self.assertEqual(len(connection.calls), 2)
         self.assertEqual(connection.calls[0][1][-1], 6)
-        self.assertEqual(len(connection.calls[0][1]), 5)
-        self.assertEqual(connection.calls[0][1].count("match"), 4)
+        self.assertEqual(len(connection.calls[0][1]), 9)
+        self.assertEqual(connection.calls[0][1].count("match"), 8)
         self.assertEqual(connection.calls[1][1], [11, "sample", 0])
 
     def test_search_persisted_chunk_sections_returns_empty_when_no_matches(self) -> None:
@@ -629,8 +689,8 @@ class ChunkSearchTests(unittest.TestCase):
 
         self.assertEqual(len(connection.calls), 3)
         self.assertEqual(connection.calls[0][1][-1], 3)
-        self.assertEqual(len(connection.calls[0][1]), 5)
-        self.assertEqual(connection.calls[0][1].count("match"), 4)
+        self.assertEqual(len(connection.calls[0][1]), 9)
+        self.assertEqual(connection.calls[0][1].count("match"), 8)
         self.assertEqual(connection.calls[1][1], [11, "sample", 0])
         self.assertEqual(connection.calls[2][1], [11, "sample", 1])
 
@@ -834,8 +894,8 @@ class ChunkSearchTests(unittest.TestCase):
 
         self.assertEqual(len(connection.calls), 3)
         self.assertEqual(connection.calls[0][1][-1], 3)
-        self.assertEqual(len(connection.calls[0][1]), 5)
-        self.assertEqual(connection.calls[0][1].count("match"), 4)
+        self.assertEqual(len(connection.calls[0][1]), 9)
+        self.assertEqual(connection.calls[0][1].count("match"), 8)
         self.assertEqual(connection.calls[1][1], [11, "sample", 0])
         self.assertEqual(connection.calls[2][1], [11, "sample", 1])
 

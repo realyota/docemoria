@@ -89,6 +89,13 @@ def _build_contains_expression(columns: list[str]) -> str:
     return "(" + " OR ".join(f"strpos({column}, lower(?)) > 0" for column in columns) + ")"
 
 
+def _build_token_match_score_expression(column: str, terms: list[str]) -> str:
+    if not terms:
+        return "0"
+
+    return " + ".join(f"CAST(strpos({column}, lower(?)) > 0 AS INTEGER)" for _ in terms)
+
+
 def _map_chunk_search_result_row(row: tuple[object, ...]) -> ChunkSearchResult:
     return ChunkSearchResult(
         run_id=int(row[0]),
@@ -205,6 +212,10 @@ def search_persisted_chunks(
     if len(query_terms) > 1:
         for term in query_terms:
             params.extend([term] * len(search_columns))
+    content_term_match_expression = _build_token_match_score_expression("lower(content)", query_terms)
+
+    params.extend(query_terms)
+    params.extend([query_text, query_text, query_text])
 
     if source_id is not None:
         source_id_text = source_id.strip()
@@ -235,10 +246,10 @@ def search_persisted_chunks(
                     heading_path,
                     character_count,
                     content,
-                    ({exact_match_expression}) AS is_exact_match,
-                    ({token_match_expression}) AS is_token_match
-                FROM chunks
-                WHERE {where_clause}
+                ({exact_match_expression}) AS is_exact_match,
+                ({token_match_expression}) AS is_token_match
+            FROM chunks
+            WHERE {where_clause}
             )
             SELECT
                 run_id,
@@ -250,10 +261,17 @@ def search_persisted_chunks(
                 heading_title,
                 heading_path,
                 character_count,
-                content
+                content,
+                (
+                    CAST(is_exact_match AS INTEGER) * 100
+                    + {content_term_match_expression}
+                    + (CAST(strpos(coalesce(lower(document_title), ''), lower(?)) > 0 AS INTEGER) * 35)
+                    + (CAST(strpos(coalesce(lower(heading_title), ''), lower(?)) > 0 AS INTEGER) * 20)
+                    + (CAST(strpos(coalesce(lower(heading_path), ''), lower(?)) > 0 AS INTEGER) * 15)
+                ) AS match_score
             FROM candidate_chunks
             WHERE is_exact_match OR is_token_match
-            ORDER BY CAST(is_exact_match AS INTEGER) DESC, run_id DESC, source_id ASC, document_index ASC, chunk_index ASC
+            ORDER BY match_score DESC, is_exact_match DESC, run_id DESC, source_id ASC, document_index ASC, chunk_index ASC
             LIMIT ?
             """,
             params,
