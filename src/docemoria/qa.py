@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,133 @@ from docemoria.storage import StorageError, open_database
 DEFAULT_DB_PATH = "docemoria.db"
 
 _CONTEXT_TRUNCATION_NOTE = "\n\n[Context truncated to keep the prompt compact.]"
+
+
+@dataclass(slots=True)
+class SummaryArtifact:
+    source_id: str
+    run_id: int
+    scope: str
+    document_index: int | None
+    repo_relative_path: str | None
+    document_title: str | None
+    summary: str
+
+
+def _search_summary_artifacts(
+    connection: "duckdb.DuckDBPyConnection | None",
+    *,
+    query: str,
+    source_id: str,
+    run_id: int | None,
+    limit: int,
+) -> list[SummaryArtifact]:
+    if connection is None or run_id is None:
+        return []
+
+    query_text = query.strip()
+    if not query_text:
+        return []
+
+    source_id_text = source_id.strip()
+    if not source_id_text:
+        return []
+
+    if limit < 1:
+        raise ValueError("top_k must be greater than 0 when provided")
+
+    artifacts: list[SummaryArtifact] = []
+
+    try:
+        run_summary_row = connection.execute(
+            """
+            SELECT summary
+            FROM ingest_runs
+            WHERE run_id = ?
+              AND source_id = ?
+              AND summary IS NOT NULL
+              AND strpos(lower(summary), lower(?)) > 0
+            """,
+            [run_id, source_id_text, query_text],
+        ).fetchone()
+    except Exception:
+        run_summary_row = None
+
+    if run_summary_row is not None and run_summary_row[0] is not None:
+        artifacts.append(
+            SummaryArtifact(
+                source_id=source_id_text,
+                run_id=run_id,
+                scope="run",
+                document_index=None,
+                repo_relative_path=None,
+                document_title=None,
+                summary=str(run_summary_row[0]),
+            )
+        )
+
+    try:
+        rows = connection.execute(
+            """
+            SELECT
+                run_id,
+                source_id,
+                document_index,
+                repo_relative_path,
+                document_title,
+                summary
+            FROM documents
+            WHERE run_id = ?
+              AND source_id = ?
+              AND summary IS NOT NULL
+              AND strpos(lower(summary), lower(?)) > 0
+            ORDER BY document_index ASC
+            LIMIT ?
+            """,
+            [run_id, source_id_text, query_text, limit],
+        ).fetchall()
+    except Exception:
+        return artifacts
+
+    for row in rows:
+        summary = row[5]
+        if summary is None:
+            continue
+        artifacts.append(
+            SummaryArtifact(
+                source_id=source_id_text if row[1] is None else str(row[1]),
+                run_id=run_id,
+                scope="document",
+                document_index=int(row[2]),
+                repo_relative_path=str(row[3]),
+                document_title=None if row[4] is None else str(row[4]),
+                summary=str(summary),
+            )
+        )
+
+    return artifacts
+
+
+def _format_summary_artifacts_context(
+    artifacts: list[SummaryArtifact],
+    *,
+    max_context_chars: int | None = None,
+) -> str:
+    if not artifacts:
+        return ""
+
+    context_parts: list[str] = ["Summary artifacts matched in compact knowledge layer:"]
+    for artifact in artifacts:
+        if artifact.scope == "run":
+            label = "Run summary"
+            location = "run scope"
+        else:
+            label = "Document summary"
+            location = artifact.repo_relative_path or "unknown"
+
+        context_parts.append(f"{label} ({location}):\n{artifact.summary}")
+
+    return _truncate_context("\n\n---\n\n".join(context_parts), max_context_chars=max_context_chars)
 
 def _load_document_summaries(
     connection: "duckdb.DuckDBPyConnection",
@@ -123,7 +251,7 @@ def format_context(
 
 def format_sources(sections: list[ChunkSectionResult]) -> list[dict[str, Any]]:
     """Build compact, structured source references from retrieved QA sections."""
-    return [
+    sources = [
         {
             "source_id": section.source_id,
             "document_index": section.document_index,
@@ -133,6 +261,22 @@ def format_sources(sections: list[ChunkSectionResult]) -> list[dict[str, Any]]:
             "match_chunk_indexes": list(section.match_chunk_indexes),
         }
         for section in sections
+    ]
+    return sources
+
+
+def format_summary_sources(artifacts: list[SummaryArtifact]) -> list[dict[str, Any]]:
+    return [
+        {
+            "source_id": artifact.source_id,
+            "document_index": artifact.document_index,
+            "file": artifact.repo_relative_path,
+            "heading": "Run Summary" if artifact.scope == "run" else "Document Summary",
+            "heading_path": None,
+            "match_chunk_indexes": [],
+            "summary_scope": artifact.scope,
+        }
+        for artifact in artifacts
     ]
 
 def build_qa_prompt(query: str, context: str, system_prompt: str = "", qa_style: str = "") -> str:
@@ -189,16 +333,31 @@ def perform_qa(
             limit=retrieval_top_k,
             max_section_chars=config.retrieval.max_section_chars
         )
-        context_text = format_context(
-            sections,
-            connection=conn,
-            run_id=resolved_run_id,
-            max_context_chars=max_context_chars,
-        )
+        summary_artifacts: list[SummaryArtifact] = []
+        context_text = ""
 
-    if not sections:
-        return "No relevant documentation found for the given query."
-    
+        if sections:
+            context_text = format_context(
+                sections,
+                connection=conn,
+                run_id=resolved_run_id,
+                max_context_chars=max_context_chars,
+            )
+        else:
+            summary_artifacts = _search_summary_artifacts(
+                conn,
+                query=query,
+                source_id=config.source_id,
+                run_id=resolved_run_id,
+                limit=retrieval_top_k,
+            )
+            if not summary_artifacts:
+                return "No relevant documentation found for the given query."
+            context_text = _format_summary_artifacts_context(
+                summary_artifacts,
+                max_context_chars=max_context_chars,
+            )
+
     # 3. Setup Provider
     gen_config = config.providers.generation
     if not gen_config:
@@ -226,7 +385,9 @@ def perform_qa(
         
     answer = provider.generate(prompt)
     if include_sources:
-        return answer, format_sources(sections)
+        if sections:
+            return answer, format_sources(sections)
+        return answer, format_summary_sources(summary_artifacts)
     return answer
 
 def main() -> int:
