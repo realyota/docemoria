@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from docemoria.storage import StorageError, open_database
 DEFAULT_DB_PATH = "docemoria.db"
 
 _CONTEXT_TRUNCATION_NOTE = "\n\n[Context truncated to keep the prompt compact.]"
+_MATCH_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+")
 
 
 @dataclass(slots=True)
@@ -27,6 +29,34 @@ class SummaryArtifact:
     repo_relative_path: str | None
     document_title: str | None
     summary: str
+
+
+def _tokenize_match_text(text: str) -> list[str]:
+    seen: set[str] = set()
+    tokens: list[str] = []
+    for token in _MATCH_TOKEN_PATTERN.findall(text.lower()):
+        if len(token) < 2 or token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+    return tokens
+
+
+def _score_summary_match(summary: str, *, query_text: str, query_tokens: list[str]) -> tuple[int, int] | None:
+    normalized_summary = summary.lower()
+    exact_phrase_match = int(query_text.lower() in normalized_summary)
+
+    if not query_tokens:
+        if exact_phrase_match:
+            return (exact_phrase_match, 0)
+        return None
+
+    summary_tokens = set(_tokenize_match_text(summary))
+    matched_token_count = sum(1 for token in query_tokens if token in summary_tokens)
+    if matched_token_count == 0 and not exact_phrase_match:
+        return None
+
+    return (exact_phrase_match, matched_token_count)
 
 
 def _search_summary_artifacts(
@@ -51,6 +81,7 @@ def _search_summary_artifacts(
     if limit < 1:
         raise ValueError("top_k must be greater than 0 when provided")
 
+    query_tokens = _tokenize_match_text(query_text)
     artifacts: list[SummaryArtifact] = []
 
     try:
@@ -61,25 +92,30 @@ def _search_summary_artifacts(
             WHERE run_id = ?
               AND source_id = ?
               AND summary IS NOT NULL
-              AND strpos(lower(summary), lower(?)) > 0
             """,
-            [run_id, source_id_text, query_text],
+            [run_id, source_id_text],
         ).fetchone()
     except Exception:
         run_summary_row = None
 
     if run_summary_row is not None and run_summary_row[0] is not None:
-        artifacts.append(
-            SummaryArtifact(
-                source_id=source_id_text,
-                run_id=run_id,
-                scope="run",
-                document_index=None,
-                repo_relative_path=None,
-                document_title=None,
-                summary=str(run_summary_row[0]),
+        run_summary = str(run_summary_row[0])
+        if _score_summary_match(
+            run_summary,
+            query_text=query_text,
+            query_tokens=query_tokens,
+        ) is not None:
+            artifacts.append(
+                SummaryArtifact(
+                    source_id=source_id_text,
+                    run_id=run_id,
+                    scope="run",
+                    document_index=None,
+                    repo_relative_path=None,
+                    document_title=None,
+                    summary=run_summary,
+                )
             )
-        )
 
     try:
         rows = connection.execute(
@@ -95,31 +131,51 @@ def _search_summary_artifacts(
             WHERE run_id = ?
               AND source_id = ?
               AND summary IS NOT NULL
-              AND strpos(lower(summary), lower(?)) > 0
             ORDER BY document_index ASC
-            LIMIT ?
             """,
-            [run_id, source_id_text, query_text, limit],
+            [run_id, source_id_text],
         ).fetchall()
     except Exception:
         return artifacts
 
+    scored_artifacts: list[tuple[tuple[int, int], SummaryArtifact]] = []
     for row in rows:
         summary = row[5]
         if summary is None:
             continue
-        artifacts.append(
-            SummaryArtifact(
-                source_id=source_id_text if row[1] is None else str(row[1]),
-                run_id=run_id,
-                scope="document",
-                document_index=int(row[2]),
-                repo_relative_path=str(row[3]),
-                document_title=None if row[4] is None else str(row[4]),
-                summary=str(summary),
+
+        summary_text = str(summary)
+        score = _score_summary_match(
+            summary_text,
+            query_text=query_text,
+            query_tokens=query_tokens,
+        )
+        if score is None:
+            continue
+
+        scored_artifacts.append(
+            (
+                score,
+                SummaryArtifact(
+                    source_id=source_id_text if row[1] is None else str(row[1]),
+                    run_id=run_id,
+                    scope="document",
+                    document_index=int(row[2]),
+                    repo_relative_path=str(row[3]),
+                    document_title=None if row[4] is None else str(row[4]),
+                    summary=summary_text,
+                ),
             )
         )
 
+    scored_artifacts.sort(
+        key=lambda item: (
+            -item[0][0],
+            -item[0][1],
+            item[1].document_index if item[1].document_index is not None else -1,
+        )
+    )
+    artifacts.extend(artifact for _, artifact in scored_artifacts[:limit])
     return artifacts
 
 
@@ -143,6 +199,7 @@ def _format_summary_artifacts_context(
         context_parts.append(f"{label} ({location}):\n{artifact.summary}")
 
     return _truncate_context("\n\n---\n\n".join(context_parts), max_context_chars=max_context_chars)
+
 
 def _load_document_summaries(
     connection: "duckdb.DuckDBPyConnection",

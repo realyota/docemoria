@@ -373,7 +373,67 @@ class TestQA(unittest.TestCase):
                 max_context_chars=None,
             )
 
-    def test_search_summary_artifacts_queries_run_and_document_summary_columns(self) -> None:
+    def test_search_summary_artifacts_uses_token_overlap_for_multi_word_queries(self) -> None:
+        class FakeCursor:
+            def __init__(self, rows: list[tuple[object, ...]]) -> None:
+                self._rows = rows
+
+            def fetchone(self) -> tuple[object, ...] | None:
+                return self._rows[0] if self._rows else None
+
+            def fetchall(self) -> list[tuple[object, ...]]:
+                return self._rows
+
+        class FakeConnection:
+            def execute(self, query: str, params: list[object]) -> FakeCursor:
+                normalized = " ".join(query.split())
+                if "FROM ingest_runs" in normalized:
+                    return FakeCursor([("Global caching overview",)])
+                if "FROM documents" in normalized:
+                    return FakeCursor(
+                        [
+                            (
+                                9,
+                                "sample",
+                                0,
+                                "docs/latency.md",
+                                "Latency",
+                                "Latency tuning improves retrieval quality for repeated lookups.",
+                            ),
+                            (
+                                9,
+                                "sample",
+                                1,
+                                "docs/retrieval.md",
+                                "Retrieval",
+                                "This summary only mentions retrieval behavior.",
+                            ),
+                            (
+                                9,
+                                "sample",
+                                2,
+                                "docs/other.md",
+                                "Other",
+                                "This summary is unrelated.",
+                            ),
+                        ]
+                    )
+                raise AssertionError("unexpected query")
+
+        artifacts = _search_summary_artifacts(
+            FakeConnection(),  # type: ignore[arg-type]
+            query="retrieval latency",
+            source_id="sample",
+            run_id=9,
+            limit=2,
+        )
+
+        self.assertEqual(len(artifacts), 2)
+        self.assertEqual([artifact.scope for artifact in artifacts], ["document", "document"])
+        self.assertEqual(artifacts[0].repo_relative_path, "docs/latency.md")
+        self.assertEqual(artifacts[1].repo_relative_path, "docs/retrieval.md")
+
+    def test_search_summary_artifacts_loads_run_and_document_summary_columns(self) -> None:
         class FakeCursor:
             def __init__(self, rows: list[tuple[object, ...]]) -> None:
                 self._rows = rows
@@ -392,7 +452,7 @@ class TestQA(unittest.TestCase):
                 self.calls.append((query, list(params)))
                 normalized = " ".join(query.split())
                 if "FROM ingest_runs" in normalized:
-                    return FakeCursor([("Run-level summary",)])
+                    return FakeCursor([("Run overview summary",)])
                 if "FROM documents" in normalized:
                     return FakeCursor(
                         [
@@ -402,7 +462,7 @@ class TestQA(unittest.TestCase):
                                 0,
                                 "docs/overview.md",
                                 "Overview",
-                                "Document summary",
+                                "Document overview summary",
                             )
                         ]
                     )
@@ -419,10 +479,11 @@ class TestQA(unittest.TestCase):
         self.assertEqual(len(artifacts), 2)
         self.assertEqual([artifact.scope for artifact in artifacts], ["run", "document"])
         self.assertIn("summary", artifacts[0].summary.lower())
-        self.assertEqual(connection.calls[0][1], [9, "sample", "overview"])
-        self.assertEqual(connection.calls[1][1], [9, "sample", "overview", 3])
+        self.assertEqual(connection.calls[0][1], [9, "sample"])
+        self.assertEqual(connection.calls[1][1], [9, "sample"])
         self.assertIn("summary IS NOT NULL", connection.calls[0][0])
         self.assertIn("FROM documents", connection.calls[1][0])
+        self.assertNotIn("strpos", connection.calls[1][0].lower())
 
     def test_perform_qa_respects_top_k_override(self) -> None:
         connection = MagicMock()
